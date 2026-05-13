@@ -91,31 +91,6 @@ yellow mark with a matching card on the right.
 </td>
 <td width="50%" valign="top">
 
-**Visual table editor**
-
-Click *Edit table* on any rendered table in the CLAUDE.md rules editor;
-each cell becomes an auto-growing textarea. Apply turns the grid back
-into clean Markdown table syntax.
-
-![Visual table editor](docs/screenshots/table-editor.png)
-
-</td>
-</tr>
-<tr>
-<td width="50%" valign="top">
-
-**Orphan recovery after the source file changes**
-
-When the underlying file is edited between sessions, the four-layer
-locator re-finds most annotations automatically. Anything it can't
-recover gets an orange ⚠ flag and one-click *Re-anchor* / *Convert to
-note* / *Delete* actions.
-
-![Orphan annotation card](docs/screenshots/orphan-card.png)
-
-</td>
-<td width="50%" valign="top">
-
 **Batch export**
 
 Every comment, in document order, in plain text. Copy to clipboard or
@@ -126,6 +101,17 @@ save as a file — one block to paste back to your LLM.
 </td>
 </tr>
 </table>
+
+**Editing tables in the CLAUDE.md rules file**
+
+Tables inside the writing-rules file are typically the worst part of
+Markdown editing — pipe characters, alignment hyphens, hand-counting
+columns. Hover any rendered table in the rules editor to reveal an
+*Edit table* button; click it to drop into a visual grid where each
+cell is an auto-growing textarea. Apply turns the grid back into clean
+Markdown table syntax.
+
+![Visual table editor workflow — rules cards → markdown editor → visual table grid](docs/screenshots/table-editor.png)
 
 ---
 

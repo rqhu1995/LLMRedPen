@@ -55,18 +55,6 @@ Show:
 
 Crop to the modal. ~1000×600 px.
 
-### `orphan-card.png`
-
-A close-up of a comment card in its **orphan** state. To produce one:
-
-1. Annotate any phrase in a manuscript .md file.
-2. Edit the source file to delete the annotated phrase entirely.
-3. Refresh the viewer.
-4. The card will appear orange-edged with the ⚠ orphan badge,
-   "Re-anchor / To note / Delete" buttons all visible.
-
-Capture the card plus 1–2 surrounding cards for context. ~500×400 px.
-
 ### `export.png`
 
 The Export modal open after a session of annotation. Show:
@@ -83,6 +71,11 @@ Crop to the modal. ~800×700 px.
 
 - `rules-editor.png` — the structured CLAUDE.md editor with H2/H3
   cards.
+- `orphan-card.png` — comment card in its **orphan** state (when the
+  underlying file edits dislodge an annotation past the 4-layer
+  locator). Intentionally not shown in the current README because the
+  three-button confirm UX still needs simplifying before it deserves
+  the spotlight.
 - `hover-coupling.gif` — hovering a mark in the article lighting up
   the matching card on the right (and vice versa). GIF only if you're
   willing to convert with `ffmpeg`.
