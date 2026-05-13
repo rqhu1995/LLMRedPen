@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Background: same yellow as the annotation highlight mark -->
+  <rect width="64" height="64" rx="10" fill="#fff5a8"/>
+
+  <!-- The red mark the pen has just drawn -->
+  <path d="M 10 53 Q 20 58 32 54 Q 44 50 54 54"
+        stroke="#c0392b" stroke-width="3.5" fill="none"
+        stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Red pen, tilted 45°, tip pointing lower-left -->
+  <g transform="translate(32, 28) rotate(45)">
+    <!-- Black writing tip -->
+    <polygon points="-18,-5 -27,0 -18,5" fill="#1f1f1f"/>
+    <!-- Red body -->
+    <rect x="-18" y="-5" width="28" height="10" fill="#c0392b"/>
+    <!-- Darker red cap -->
+    <rect x="10" y="-5" width="10" height="10" fill="#8e2a20"/>
+    <!-- Subtle highlight stripe on the body -->
+    <rect x="-14" y="-3" width="22" height="1.5" fill="#ff8a73" opacity="0.45"/>
+  </g>
+</svg>

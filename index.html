@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LLMRedPen</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div id="app">
+    <aside id="sidebar">
+      <header id="sidebar-header">
+        <h1>LLMRedPen</h1>
+        <button id="open-folder">Open paper folder…</button>
+        <div id="folder-name" class="folder-name"></div>
+      </header>
+      <nav id="file-list" aria-label="Markdown files in folder"></nav>
+      <footer id="sidebar-footer">
+        <button id="open-rules-editor" disabled>Edit CLAUDE.md rules</button>
+        <div class="hint">⌘+E export · ⌘+Enter save · Esc cancel</div>
+      </footer>
+    </aside>
+
+    <main id="content">
+      <section id="welcome">
+        <h2>Read &amp; annotate</h2>
+        <p>Open a paper folder. The folder must contain <code>CLAUDE.md</code> at its root — that's the writing-rules file this viewer can also edit.</p>
+        <p>Select any text in a rendered file to annotate it. Comments live in the right pane; they persist in your browser per-folder and survive page refresh.</p>
+        <p id="browser-warning"></p>
+      </section>
+      <article id="rendered" hidden></article>
+    </main>
+
+    <aside id="comments-pane" hidden>
+      <header id="comments-pane-header">
+        <h2>Comments</h2>
+        <span id="comments-count"></span>
+      </header>
+      <div id="comments-pane-actions">
+        <button id="add-general-note" disabled title="Add a comment for this file without selecting any text">+ Add note (no selection)</button>
+      </div>
+      <div id="comments-list"></div>
+      <footer id="comments-pane-footer">
+        <button id="export-comments" disabled>Export…</button>
+      </footer>
+    </aside>
+  </div>
+
+  <!-- Comment popup (small floating box anchored to selection) -->
+  <div id="comment-popup" class="popup" hidden>
+    <div class="popup-anchor" id="comment-anchor-display"></div>
+    <textarea id="comment-text" placeholder="Type your comment…&#10;⌘+Enter to save · Esc to cancel"></textarea>
+    <div class="popup-actions">
+      <button id="comment-save" class="primary">Save</button>
+      <button id="comment-cancel">Cancel</button>
+    </div>
+  </div>
+
+  <!-- Export modal -->
+  <div id="export-modal" class="modal" hidden>
+    <div class="modal-content">
+      <header class="modal-header">
+        <h2>All comments</h2>
+        <button class="modal-close" id="close-export" aria-label="Close">×</button>
+      </header>
+      <div class="modal-body">
+        <pre id="export-text"></pre>
+      </div>
+      <footer class="modal-footer">
+        <button id="copy-clipboard" class="primary">Copy to clipboard</button>
+        <button id="save-file">Save as file…</button>
+        <button id="clear-all" class="danger">Delete all</button>
+      </footer>
+    </div>
+  </div>
+
+  <!-- Rules editor modal -->
+  <div id="rules-modal" class="modal" hidden>
+    <div class="modal-content wide">
+      <header class="modal-header">
+        <h2>CLAUDE.md rules editor</h2>
+        <button class="modal-close" id="close-rules" aria-label="Close">×</button>
+      </header>
+      <div class="modal-body">
+        <div id="rules-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Floating tooltip for annotation hover. One global element, repositioned
+       and refilled on every mark mouseenter. -->
+  <div id="mark-tooltip" hidden>
+    <div class="tt-anchor"></div>
+    <div class="tt-body"></div>
+  </div>
+
+  <!-- Visual table editor. Opened on top of the inline editor when the
+       user clicks the toolbar `table` button. Edits an existing markdown
+       table at the cursor, or inserts a new one if there isn't one. -->
+  <div id="table-editor" class="modal" hidden>
+    <div class="modal-content">
+      <header class="modal-header">
+        <h2>Edit table</h2>
+        <span class="modal-hint">Tab / Shift+Tab to move · ⌘+Enter to apply · Esc to cancel</span>
+      </header>
+      <div id="table-editor-body" class="modal-body">
+        <p class="te-hint">Cells preserve markdown syntax. Use <code>**bold**</code>, <code>*italic*</code>, <code>`code`</code> as normal.</p>
+        <div id="table-editor-grid-wrap"></div>
+      </div>
+      <footer class="modal-footer">
+        <button type="button" data-te-action="add-row">+ Row</button>
+        <button type="button" data-te-action="add-col">+ Column</button>
+        <span class="te-spacer"></span>
+        <button id="table-editor-cancel">Cancel</button>
+        <button id="table-editor-apply" class="primary">Apply</button>
+      </footer>
+    </div>
+  </div>
+
+  <!-- Inline editor (textarea + live preview) for editing a single rules block -->
+  <div id="inline-editor" class="modal" hidden>
+    <div class="modal-content fullscreen">
+      <header class="modal-header">
+        <h2>Edit block</h2>
+        <span class="modal-hint">Source (left) · Live preview (right) · ⌘+Enter to save · Esc to cancel</span>
+      </header>
+      <div class="modal-body editor-body">
+        <div class="editor-pane">
+          <div id="inline-editor-toolbar" role="toolbar" aria-label="Markdown formatting">
+            <button type="button" data-md-action="bold" title="Bold  (⌘B)"><b>B</b></button>
+            <button type="button" data-md-action="italic" title="Italic  (⌘I)"><i>I</i></button>
+            <button type="button" data-md-action="code" title="Inline code  (⌘`)"><span class="tb-code">{}</span></button>
+            <span class="toolbar-sep"></span>
+            <button type="button" data-md-action="h2" title="Heading 2 — ##">H2</button>
+            <button type="button" data-md-action="h3" title="Heading 3 — ###">H3</button>
+            <span class="toolbar-sep"></span>
+            <button type="button" data-md-action="ul" title="Bullet list — -">•&nbsp;list</button>
+            <button type="button" data-md-action="ol" title="Numbered list — 1.">1.&nbsp;list</button>
+            <button type="button" data-md-action="quote" title="Blockquote — &gt;">&ldquo;&nbsp;quote</button>
+            <span class="toolbar-sep"></span>
+            <button type="button" data-md-action="link" title="Link  (⌘K)">link</button>
+            <button type="button" data-md-action="table" title="Insert / edit table (visual editor)">table</button>
+          </div>
+          <textarea id="inline-editor-text" spellcheck="false"></textarea>
+        </div>
+        <div id="inline-editor-preview" class="editor-preview"></div>
+      </div>
+      <footer class="modal-footer">
+        <button id="inline-editor-save" class="primary">Save to disk</button>
+        <button id="inline-editor-cancel">Cancel</button>
+      </footer>
+    </div>
+  </div>
+
+  <!-- Dependencies (CDN). Pinned to specific versions. -->
+  <script src="https://cdn.jsdelivr.net/npm/markdown-it@14.0.0/dist/markdown-it.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+
+  <script src="/app.js"></script>
+</body>
+</html>
