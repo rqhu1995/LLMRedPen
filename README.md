@@ -8,11 +8,14 @@ The aim is to bring the rhythm of paper review — careful reading, red-pen
 margins, then handover to the author — into LLM-assisted writing, without
 turning the user into a full-time editor.
 
+![LLMRedPen — reading and annotating an LLM-written manuscript draft](docs/screenshots/hero.png)
+
 ---
 
 ## Table of contents
 
 - [Why this tool exists](#why-this-tool-exists)
+- [Screenshots](#screenshots)
 - [What it does](#what-it-does)
 - [Requirements](#requirements)
 - [Install](#install)
@@ -71,6 +74,61 @@ wrote.
 
 ---
 
+## Screenshots
+
+<table>
+<tr>
+<td width="50%" valign="top">
+
+**Annotating a paragraph**
+
+Select any text → a popup opens, the selection stays highlighted
+(dashed orange) while you type, and saving turns it into a permanent
+yellow mark with a matching card on the right.
+
+![Selecting and annotating](docs/screenshots/annotation-flow.png)
+
+</td>
+<td width="50%" valign="top">
+
+**Visual table editor**
+
+Click *Edit table* on any rendered table in the CLAUDE.md rules editor;
+each cell becomes an auto-growing textarea. Apply turns the grid back
+into clean Markdown table syntax.
+
+![Visual table editor](docs/screenshots/table-editor.png)
+
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+
+**Orphan recovery after the source file changes**
+
+When the underlying file is edited between sessions, the four-layer
+locator re-finds most annotations automatically. Anything it can't
+recover gets an orange ⚠ flag and one-click *Re-anchor* / *Convert to
+note* / *Delete* actions.
+
+![Orphan annotation card](docs/screenshots/orphan-card.png)
+
+</td>
+<td width="50%" valign="top">
+
+**Batch export**
+
+Every comment, in document order, in plain text. Copy to clipboard or
+save as a file — one block to paste back to your LLM.
+
+![Export modal](docs/screenshots/export.png)
+
+</td>
+</tr>
+</table>
+
+---
+
 ## What it does
 
 - **Document-style rendering.** Renders Markdown (via markdown-it) with
@@ -117,7 +175,7 @@ wrote.
 ## Install
 
 ```sh
-git clone https://github.com/<your-user>/llm-redpen.git ~/tools/llm-redpen
+git clone https://github.com/rqhu1995/LLMRedPen.git ~/tools/llm-redpen
 ```
 
 (or clone anywhere; the paths below just assume `~/tools/llm-redpen`).
