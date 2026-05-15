@@ -71,11 +71,6 @@ Crop to the modal. ~800×700 px.
 
 - `rules-editor.png` — the structured CLAUDE.md editor with H2/H3
   cards.
-- `orphan-card.png` — comment card in its **orphan** state (when the
-  underlying file edits dislodge an annotation past the 4-layer
-  locator). Intentionally not shown in the current README because the
-  three-button confirm UX still needs simplifying before it deserves
-  the spotlight.
 - `hover-coupling.gif` — hovering a mark in the article lighting up
   the matching card on the right (and vice versa). GIF only if you're
   willing to convert with `ffmpeg`.

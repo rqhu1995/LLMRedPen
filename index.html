@@ -35,7 +35,17 @@
         <p>Select any text in a rendered file to annotate it. Comments live in the right pane; they persist in your browser per-folder and survive page refresh.</p>
         <p id="browser-warning"></p>
       </section>
+      <div id="tab-bar" hidden>
+        <div class="tab-group">
+          <button class="tab-btn" data-tab="prev"     disabled title="The version you locked at the end of the previous round, with the comments you wrote then. Read-only.">&larr; Prev</button>
+          <button class="tab-btn" data-tab="diff"     disabled title="Word-level changes between the previous round's version and the current file on disk.">&harr; Diff</button>
+          <button class="tab-btn active" data-tab="current" title="The current file. Select text to add new comments.">Current &rarr;</button>
+        </div>
+        <div class="tab-spacer"></div>
+        <button id="proceed-next-round" class="proceed-btn" disabled title="Lock the current version + your comments as the new previous-round baseline. Discards the existing previous round and clears your current comments.">Proceed to the next round</button>
+      </div>
       <article id="rendered" hidden></article>
+      <div id="diff-view" class="diff-view" hidden></div>
     </main>
 
     <aside id="comments-pane" hidden>
@@ -166,6 +176,7 @@
   <!-- Dependencies (CDN). Pinned to specific versions. -->
   <script src="https://cdn.jsdelivr.net/npm/markdown-it@14.0.0/dist/markdown-it.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/diff@5.2.0/dist/diff.min.js"></script>
 
   <script src="/app.js"></script>
 </body>

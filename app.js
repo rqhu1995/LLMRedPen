@@ -18,20 +18,19 @@
 
 let directoryHandle = null;   // FileSystemDirectoryHandle of the paper folder
 let currentFile = null;       // { name, handle, content }
-let annotations = {};         // { filename: [ { anchor, text, comment, ... } ] }
+let annotations = {};         // { filename: [ { anchor, text, comment, ... } ] } — current round
+let baselines = {};           // { filename: { content, annotations, timestamp } } — last locked previous round
 let folderFileNames = [];     // sorted list of .md filenames currently in the folder
+
+// Which tab the article pane is showing right now. Drives render paths and
+// gates write operations (only the 'current' tab accepts new annotations).
+//   'current' — current file content + current-round comments (editable)
+//   'prev'    — previous-round snapshot + its comments (read-only)
+//   'diff'    — word-level diff of previous content vs current file content
+let activeTab = 'current';
 let mdParser = null;          // markdown-it instance
 let activeSelection = null;   // { text, anchor, contextBefore, contextAfter, charOffset }
 let rulesData = null;         // { handle, text, sections } while rules editor is open
-
-// Set of annotation timestamps that couldn't be located in the current
-// rendered file. Rebuilt every applyExistingHighlights() pass.
-const orphans = new Set();
-
-// When non-null, the next text selection inside the article is treated as
-// a re-anchor target for the annotation with this timestamp, instead of
-// creating a new annotation.
-let pendingReanchorId = null;
 
 // localStorage / IndexedDB keys kept as `mda:` and `mda` respectively
 // (legacy from when the project was named md-annotator) so that existing
@@ -278,6 +277,7 @@ async function applyFolder(handle) {
 
   await listFiles();
   loadAnnotations();
+  loadBaselines();
   renderStrandedSidebar();
 
   document.getElementById('export-comments').disabled = false;
@@ -440,19 +440,113 @@ async function openFile(name) {
     a.classList.toggle('active', a.dataset.filename === name);
   });
 
-  // A file is now open — general notes can be added against it.
-  document.getElementById('add-general-note').disabled = false;
-
   document.getElementById('welcome').hidden = true;
-  const rendered = document.getElementById('rendered');
-  rendered.hidden = false;
-  rendered.innerHTML = renderMarkdownWithMath(text);
+  document.getElementById('tab-bar').hidden = false;
 
-  numberSectionsAndParagraphs(rendered);
-  refreshAnnotationsUI();
+  // Default to the Current tab on every file open. The Current view is
+  // the only one that's always meaningful (the file is on disk).
+  activeTab = 'current';
+  refreshTabAvailability();
+  renderActiveTab();
 
   // Scroll to top of newly opened file.
   document.getElementById('content').scrollTop = 0;
+}
+
+// =============================== Tab plumbing ========================
+//
+// Three tabs, all operate on the currently-open file:
+//   prev    : the version + comments locked at the end of the previous
+//             round (read-only). Disabled when no baseline exists.
+//   diff    : word-level diff between the previous version and the
+//             current file content. Disabled when no baseline exists.
+//   current : the current file content + this round's in-progress comments
+//             (the only tab that accepts new annotations).
+
+function getDisplayContent() {
+  if (!currentFile) return '';
+  if (activeTab === 'prev') {
+    const b = baselines[currentFile.name];
+    return b ? b.content : '';
+  }
+  return currentFile.content;
+}
+
+function getDisplayAnnotations() {
+  if (!currentFile) return [];
+  if (activeTab === 'prev') {
+    const b = baselines[currentFile.name];
+    return b ? (b.annotations || []) : [];
+  }
+  return annotations[currentFile.name] || [];
+}
+
+// Whether the active tab accepts user edits (new annotations, edit, delete,
+// promote). Only Current is interactive; Prev is a frozen snapshot, Diff
+// has no annotation surface at all.
+function isInteractiveTab() {
+  return activeTab === 'current';
+}
+
+function setActiveTab(name) {
+  if (!currentFile) return;
+  if (name === activeTab) return;
+  if (name === 'prev' || name === 'diff') {
+    if (!baselines[currentFile.name]) return;  // disabled
+  }
+  activeTab = name;
+  document.querySelectorAll('.tab-btn').forEach((b) => {
+    b.classList.toggle('active', b.dataset.tab === name);
+  });
+  renderActiveTab();
+}
+
+function refreshTabAvailability() {
+  const hasBaseline = !!(currentFile && baselines[currentFile.name]);
+  document.querySelectorAll('.tab-btn').forEach((b) => {
+    if (b.dataset.tab === 'prev' || b.dataset.tab === 'diff') {
+      b.disabled = !hasBaseline;
+    }
+    b.classList.toggle('active', b.dataset.tab === activeTab);
+  });
+
+  const proceed = document.getElementById('proceed-next-round');
+  // Allow promote whenever a file is open: round-1 promote is fine even
+  // with zero comments (locks a clean baseline). Hide it on non-current
+  // tabs so the user only ever sees the button in its working context.
+  proceed.disabled = !isInteractiveTab();
+}
+
+// Renders whatever the active tab needs into the article container (or the
+// dedicated diff container). Replaces the old inline body of openFile().
+function renderActiveTab() {
+  const rendered = document.getElementById('rendered');
+  const diffView = document.getElementById('diff-view');
+
+  if (activeTab === 'diff') {
+    rendered.hidden = true;
+    diffView.hidden = false;
+    document.getElementById('comments-pane').classList.add('diff-hidden');
+    renderDiffTab();
+    return;
+  }
+
+  // Both 'current' and 'prev' render markdown into #rendered; the only
+  // difference is which content + which annotation bucket they use.
+  diffView.hidden = true;
+  rendered.hidden = false;
+  document.getElementById('comments-pane').classList.remove('diff-hidden');
+
+  rendered.innerHTML = renderMarkdownWithMath(getDisplayContent());
+  numberSectionsAndParagraphs(rendered);
+  refreshAnnotationsUI();
+
+  // Toggle the article into a read-only visual state on Prev so the user
+  // gets a hint that selection won't do anything useful here.
+  rendered.classList.toggle('read-only', !isInteractiveTab());
+
+  // The 'add general note' button only makes sense on the editable tab.
+  document.getElementById('add-general-note').disabled = !isInteractiveTab();
 }
 
 function numberSectionsAndParagraphs(rendered) {
@@ -524,6 +618,10 @@ function bindSelectionHandlers() {
 }
 
 function handleSelection(e) {
+  // Selection-driven new annotations are only valid on the editable Current
+  // tab. The Prev tab is a frozen archive of last round's snapshot.
+  if (!isInteractiveTab()) return;
+
   // If clicking on existing mark, show its comment instead of opening a new popup.
   if (e.target.closest('mark.annotation')) {
     return;
@@ -549,26 +647,6 @@ function handleSelection(e) {
     return; // not in an anchored block (preamble)
   }
 
-  // Re-anchor branch: if the user just clicked "Re-anchor" on an orphan
-  // card, treat this selection as the new home for that comment rather
-  // than opening a popup for a new annotation.
-  if (pendingReanchorId !== null) {
-    const trimmed = text.trim();
-    const newData = {
-      anchor: anchorEl.dataset.anchor,
-      text: trimmed,
-      contextBefore: textBefore(range, anchorEl, CONTEXT_LEN),
-      contextAfter: textAfter(range, anchorEl, CONTEXT_LEN),
-      charOffset: computeArticleCharOffset(range),
-    };
-    const preview = trimmed.length > 80 ? trimmed.slice(0, 80) + '…' : trimmed;
-    const ok = confirm(`Re-anchor this comment to:\n\n  ${newData.anchor}\n  "${preview}"\n\nProceed?`);
-    if (ok) reanchorAnnotation(pendingReanchorId, newData);
-    cancelReanchor();
-    window.getSelection().removeAllRanges();
-    return;
-  }
-
   activeSelection = {
     type: 'anchored',
     // Trim leading/trailing whitespace from the selection so what we
@@ -590,6 +668,7 @@ function handleSelection(e) {
 // or document-level notes that aren't tied to a specific passage.
 function addGeneralNote() {
   if (!currentFile) return;
+  if (!isInteractiveTab()) return;
   hideCommentPopup();  // close any open popup first
   activeSelection = {
     type: 'general',
@@ -606,6 +685,7 @@ function addGeneralNote() {
 // wants to comment on a whole paragraph without dragging a selection.
 function addParagraphNote(anchor) {
   if (!currentFile) return;
+  if (!isInteractiveTab()) return;
   hideCommentPopup();  // close any open popup first
 
   const rendered = document.getElementById('rendered');
@@ -783,6 +863,10 @@ function annotationsKey() {
   return ANNOTATIONS_PREFIX + (directoryHandle ? directoryHandle.name : 'default');
 }
 
+function baselinesKey() {
+  return ANNOTATIONS_PREFIX + 'baselines:' + (directoryHandle ? directoryHandle.name : 'default');
+}
+
 function persistAnnotations() {
   try {
     localStorage.setItem(annotationsKey(), JSON.stringify(annotations));
@@ -800,6 +884,25 @@ function loadAnnotations() {
   }
 }
 
+function persistBaselines() {
+  try {
+    localStorage.setItem(baselinesKey(), JSON.stringify(baselines));
+  } catch (e) {
+    // Baselines can be large (full file content); a quota miss here is
+    // worth flagging, but we don't want to lose the in-memory copy.
+    alert('localStorage write failed for previous-round snapshot (quota?). The snapshot is held in memory for this session only.');
+  }
+}
+
+function loadBaselines() {
+  try {
+    const raw = localStorage.getItem(baselinesKey());
+    baselines = raw ? JSON.parse(raw) : {};
+  } catch (e) {
+    baselines = {};
+  }
+}
+
 // ============================== Highlight rendering ==================
 
 function applyExistingHighlights() {
@@ -814,15 +917,11 @@ function applyExistingHighlights() {
   });
   rendered.normalize();
 
-  // Reset orphan set; will be rebuilt as each annotation locates (or fails).
-  orphans.clear();
-
   // Only anchored comments get article highlights; general notes have no text.
   // The 4-layer locator (see highlightOne / locateAnnotation) needs the
   // current article text map fresh each call because successful highlights
   // mutate the DOM by wrapping text in <mark> elements.
-  const anns = annotations[currentFile.name] || [];
-  for (const ann of anns) {
+  for (const ann of getDisplayAnnotations()) {
     if (ann.type === 'general') continue;
     highlightOne(ann);
   }
@@ -830,19 +929,12 @@ function applyExistingHighlights() {
 
 // 4-layer annotation locator + highlighter. Modelled on the Hypothesis
 // client (https://github.com/hypothesis/client) anchoring pipeline.
-//
-//   Layer 1: structural anchor (§S ¶N) + exact text inside that block
-//   Layer 2: stored char offset ± slack + exact text
-//   Layer 3: full-article search for `prefix + text + suffix` (exact)
-//   Layer 4: full-article search for `prefix + ANYTHING + suffix`
-//            — both prefix and suffix must be present; the middle becomes
-//              the re-anchored text portion (handles in-place paraphrase)
-//
-// On failure the annotation is flagged orphaned (`orphans.add(timestamp)`)
-// and shows up in the right pane with re-anchor / to-note / delete buttons.
-// We do NOT write the resolved location back to localStorage — every pass
-// re-anchors from the original selectors, so small per-session drift does
-// not accumulate across many file revisions (same choice as Hypothesis).
+// Used internally to draw highlights for annotations created against the
+// current file content. If an annotation cannot be located (e.g. user
+// edited the .md mid-session and the surrounding text drifted) we just
+// silently skip the highlight; the comment card still shows in the right
+// pane with its stored anchor + quote so the user can still see what
+// they wrote.
 function highlightOne(ann) {
   if (!ann.text) return;
 
@@ -850,16 +942,10 @@ function highlightOne(ann) {
   const map = buildTextMap(article);
 
   const loc = locateAnnotation(ann, map, article);
-  if (!loc) {
-    orphans.add(ann.timestamp);
-    return;
-  }
+  if (!loc) return;
 
   const range = offsetsToRange(map, loc.start, loc.end);
-  if (!range) {
-    orphans.add(ann.timestamp);
-    return;
-  }
+  if (!range) return;
 
   const mark = document.createElement('mark');
   mark.className = 'annotation';
@@ -873,8 +959,7 @@ function highlightOne(ann) {
       range.insertNode(mark);
     }
   } catch (err) {
-    console.warn('[mda] highlightOne wrap failed', err);
-    orphans.add(ann.timestamp);
+    console.warn('[redpen] highlightOne wrap failed', err);
     return;
   }
 
@@ -1188,12 +1273,8 @@ function getExportScope() {
 }
 
 function compareByAnchor(a, b) {
-  // Sort order: orphans first (so the user sees them and can act), then
-  // general notes, then anchored comments by §S ¶N, then creation time.
-  const aOrph = orphans.has(a.timestamp);
-  const bOrph = orphans.has(b.timestamp);
-  if (aOrph !== bOrph) return aOrph ? -1 : 1;
-
+  // Sort order: general notes first (no anchor to sort by), then anchored
+  // comments by §S ¶N, then by creation time as the tiebreaker.
   const aGen = a.type === 'general';
   const bGen = b.type === 'general';
   if (aGen && !bGen) return -1;
@@ -1328,28 +1409,32 @@ function renderCommentsList() {
     return;
   }
 
-  const anns = (annotations[currentFile.name] || []).slice().sort(compareByAnchor);
+  const anns = getDisplayAnnotations().slice().sort(compareByAnchor);
+  const isReadOnly = !isInteractiveTab();
   count.textContent = anns.length ? `${anns.length}` : '';
 
   if (!anns.length) {
-    list.innerHTML = '<p class="empty">No comments on this file yet.<br>Select text in the article to add one.</p>';
+    list.innerHTML = isReadOnly
+      ? '<p class="empty">No comments were saved in the previous round.</p>'
+      : '<p class="empty">No comments on this file yet.<br>Select text in the article to add one.</p>';
     return;
   }
 
   list.innerHTML = '';
   for (const ann of anns) {
-    list.appendChild(buildCommentCard(ann));
+    list.appendChild(buildCommentCard(ann, { readOnly: isReadOnly }));
   }
 }
 
-function buildCommentCard(ann) {
+function buildCommentCard(ann, opts) {
+  opts = opts || {};
   const isGeneral = ann.type === 'general';
-  const isOrphan = orphans.has(ann.timestamp);
+  const readOnly = !!opts.readOnly;
 
   const card = document.createElement('div');
   card.className = 'comment-card'
     + (isGeneral ? ' general' : '')
-    + (isOrphan ? ' orphan' : '');
+    + (readOnly ? ' read-only' : '');
   card.dataset.annId = String(ann.timestamp);
 
   const header = document.createElement('div');
@@ -1358,51 +1443,29 @@ function buildCommentCard(ann) {
   const anchor = document.createElement('span');
   anchor.className = 'comment-anchor';
   anchor.textContent = isGeneral ? 'note' : ann.anchor;
-  if (isOrphan) {
-    anchor.appendChild(document.createTextNode(' '));
-    const badge = document.createElement('span');
-    badge.className = 'orphan-badge';
-    badge.textContent = '⚠ orphan';
-    anchor.appendChild(badge);
-  }
   header.appendChild(anchor);
 
-  const actions = document.createElement('div');
-  actions.className = 'comment-actions';
+  // Edit / Delete buttons only on the editable Current tab. On the Prev
+  // tab the cards are a frozen archive — read-only by design.
+  if (!readOnly) {
+    const actions = document.createElement('div');
+    actions.className = 'comment-actions';
 
-  const editBtn = document.createElement('button');
-  editBtn.textContent = 'Edit';
-  editBtn.onclick = (e) => { e.stopPropagation(); editComment(ann.timestamp); };
-  actions.appendChild(editBtn);
+    const editBtn = document.createElement('button');
+    editBtn.textContent = 'Edit';
+    editBtn.onclick = (e) => { e.stopPropagation(); editComment(ann.timestamp); };
+    actions.appendChild(editBtn);
 
-  if (isOrphan) {
-    const reBtn = document.createElement('button');
-    reBtn.textContent = 'Re-anchor';
-    reBtn.onclick = (e) => { e.stopPropagation(); startReanchor(ann.timestamp); };
-    actions.appendChild(reBtn);
+    const delBtn = document.createElement('button');
+    delBtn.textContent = 'Delete';
+    delBtn.className = 'danger';
+    delBtn.onclick = (e) => { e.stopPropagation(); deleteComment(ann.timestamp); };
+    actions.appendChild(delBtn);
 
-    const noteBtn = document.createElement('button');
-    noteBtn.textContent = 'To note';
-    noteBtn.title = 'Convert to a general note (drops the lost anchor)';
-    noteBtn.onclick = (e) => { e.stopPropagation(); convertToNote(ann.timestamp); };
-    actions.appendChild(noteBtn);
+    header.appendChild(actions);
   }
 
-  const delBtn = document.createElement('button');
-  delBtn.textContent = 'Delete';
-  delBtn.className = 'danger';
-  delBtn.onclick = (e) => { e.stopPropagation(); deleteComment(ann.timestamp); };
-  actions.appendChild(delBtn);
-
-  header.appendChild(actions);
   card.appendChild(header);
-
-  if (isOrphan) {
-    const meta = document.createElement('div');
-    meta.className = 'orphan-meta';
-    meta.textContent = `was at ${ann.anchor} — original text not locatable in current file`;
-    card.appendChild(meta);
-  }
 
   // Anchored comments with quoted text show the passage. General notes
   // and paragraph-level (no-text) anchored notes skip the quote block.
@@ -1418,66 +1481,12 @@ function buildCommentCard(ann) {
   body.textContent = ann.comment;
   card.appendChild(body);
 
-  // Navigation only makes sense for anchored comments that ARE anchored.
-  if (!isGeneral && !isOrphan) {
+  if (!isGeneral) {
     card.addEventListener('click', () => scrollToAnchor(ann));
     bindCardHover(card, ann);
   }
 
   return card;
-}
-
-// === Re-anchor + convert-to-note ===
-//
-// Both operations apply to a single orphan card. Re-anchor enters a mode
-// where the next text selection in the article becomes the new home
-// (instead of starting a new annotation). Convert-to-note drops the
-// anchor/text/context entirely and keeps just the comment body as a
-// general note.
-
-function startReanchor(timestamp) {
-  pendingReanchorId = timestamp;
-  document.body.classList.add('reanchor-mode');
-  // If something was selected when the user clicked Re-anchor, clear it so
-  // the new mouseup actually fires on a fresh selection.
-  window.getSelection().removeAllRanges();
-}
-
-function cancelReanchor() {
-  pendingReanchorId = null;
-  document.body.classList.remove('reanchor-mode');
-}
-
-function reanchorAnnotation(timestamp, newData) {
-  if (!currentFile) return;
-  const fname = currentFile.name;
-  const ann = (annotations[fname] || []).find((a) => a.timestamp === timestamp);
-  if (!ann) return;
-  ann.type = 'anchored';
-  ann.anchor = newData.anchor;
-  ann.text = newData.text;
-  ann.contextBefore = newData.contextBefore;
-  ann.contextAfter = newData.contextAfter;
-  ann.charOffset = newData.charOffset;
-  persistAnnotations();
-  refreshAnnotationsUI();
-}
-
-function convertToNote(timestamp) {
-  if (!currentFile) return;
-  const fname = currentFile.name;
-  const ann = (annotations[fname] || []).find((a) => a.timestamp === timestamp);
-  if (!ann) return;
-  if (!confirm('Convert this orphaned comment into a general note?\n\nThe anchor and quoted text are dropped; only your comment body is kept.')) return;
-  ann.type = 'general';
-  ann.anchor = '_general';
-  ann.text = '';
-  ann.contextBefore = '';
-  ann.contextAfter = '';
-  delete ann.charOffset;
-  orphans.delete(timestamp);
-  persistAnnotations();
-  refreshAnnotationsUI();
 }
 
 function scrollToAnchor(ann) {
@@ -2341,6 +2350,110 @@ function continueOrExit(ta, e, caret, lineStart, contentOnLine, nextPrefix) {
   }
 }
 
+// ============================== Diff tab =============================
+//
+// Word-level inline diff between the previous-round snapshot and the
+// current file content (markdown source, not rendered HTML — we want the
+// user to see the actual textual changes the agent made, including
+// markdown structure changes like added headings).
+
+function renderDiffTab() {
+  const container = document.getElementById('diff-view');
+  container.innerHTML = '';
+  // Comments are hidden on this tab — clear the count too so a stale
+  // number from another tab doesn't sit in the header.
+  document.getElementById('comments-count').textContent = '';
+
+  if (!currentFile) return;
+  const baseline = baselines[currentFile.name];
+  if (!baseline) {
+    container.textContent = 'No previous round to diff against.';
+    return;
+  }
+
+  const oldText = baseline.content;
+  const newText = currentFile.content;
+
+  if (oldText === newText) {
+    container.innerHTML = '<p class="diff-empty">No changes between the previous round and the current file.</p>';
+    return;
+  }
+
+  if (typeof Diff === 'undefined' || !Diff.diffWordsWithSpace) {
+    container.textContent = 'Diff library failed to load. Reload the page.';
+    return;
+  }
+
+  const chunks = Diff.diffWordsWithSpace(oldText, newText);
+  const pre = document.createElement('pre');
+  pre.className = 'diff-text';
+  for (const chunk of chunks) {
+    if (chunk.added) {
+      const ins = document.createElement('ins');
+      ins.className = 'diff-add';
+      ins.textContent = chunk.value;
+      pre.appendChild(ins);
+    } else if (chunk.removed) {
+      const del = document.createElement('del');
+      del.className = 'diff-del';
+      del.textContent = chunk.value;
+      pre.appendChild(del);
+    } else {
+      pre.appendChild(document.createTextNode(chunk.value));
+    }
+  }
+  container.appendChild(pre);
+}
+
+// ============================== Promote to next round =================
+//
+// Snapshots the current file content + this round's comments into the
+// previous-round slot, then clears this round's comments. Exists so the
+// user can mark "I'm done with this review pass; lock it in as what I
+// sent to the agent". Next time they open the file (after the agent has
+// edited it on disk), the Diff tab will show what changed.
+
+function promoteToNextRound() {
+  if (!currentFile || !isInteractiveTab()) return;
+  const fname = currentFile.name;
+  const cur = annotations[fname] || [];
+  const prev = baselines[fname];
+
+  let msg;
+  if (prev) {
+    msg =
+      `Lock the current version of "${fname}" as the new previous-round baseline?\n\n` +
+      `What this does:\n` +
+      `  • Discards the existing previous round (${prev.annotations.length} comment(s)).\n` +
+      `  • Snapshots the current file + your ${cur.length} comment(s) as the new baseline.\n` +
+      `  • Clears your current comments so the next round starts blank.\n\n` +
+      `This cannot be undone.`;
+  } else {
+    msg =
+      `Lock the current version of "${fname}" as the previous-round baseline?\n\n` +
+      `What this does:\n` +
+      `  • Snapshots the current file + your ${cur.length} comment(s).\n` +
+      `  • Clears your current comments so the next round starts blank.\n` +
+      `  • When the file is edited later (e.g. by the agent), the Diff tab will show what changed.\n\n` +
+      `Continue?`;
+  }
+  if (!confirm(msg)) return;
+
+  baselines[fname] = {
+    content: currentFile.content,
+    annotations: cur.slice(),
+    timestamp: Date.now(),
+  };
+  delete annotations[fname];
+  persistBaselines();
+  persistAnnotations();
+
+  // Stay on Current; it's now empty (fresh round). Prev/Diff become
+  // available since we just created a baseline.
+  refreshTabAvailability();
+  refreshAnnotationsUI();
+}
+
 // ============================== UI event bindings ====================
 
 function bindUIEvents() {
@@ -2348,6 +2461,11 @@ function bindUIEvents() {
   document.getElementById('export-comments').onclick = showExportModal;
   document.getElementById('open-rules-editor').onclick = openRulesEditor;
   document.getElementById('add-general-note').onclick = addGeneralNote;
+  document.getElementById('proceed-next-round').onclick = promoteToNextRound;
+
+  document.querySelectorAll('.tab-btn').forEach((btn) => {
+    btn.onclick = () => setActiveTab(btn.dataset.tab);
+  });
 
   document.getElementById('close-export').onclick = () => {
     document.getElementById('export-modal').hidden = true;
@@ -2400,10 +2518,9 @@ function bindUIEvents() {
     }
   });
 
-  // Global Esc closes any open modal/popup, or cancels reanchor mode.
+  // Global Esc closes any open modal/popup.
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return;
-    if (pendingReanchorId !== null) { cancelReanchor(); return; }
     if (!document.getElementById('comment-popup').hidden) hideCommentPopup();
     else if (!document.getElementById('export-modal').hidden) {
       document.getElementById('export-modal').hidden = true;

@@ -133,12 +133,13 @@ Markdown table syntax.
   the article. Edit / delete inline.
 - **Batch export** — copy all comments to clipboard or save as a plain
   text file. The output is what you paste back to the model.
-- **Robust re-anchoring** — when the underlying file is edited between
-  annotation sessions, a four-layer locator (modelled on the
-  [Hypothesis client](https://github.com/hypothesis/client)) re-finds
-  each annotation. Annotations that can't be located surface as
-  *orphan* in the right pane, with one-click *Re-anchor* /
-  *Convert to note* / *Delete* actions.
+- **Round-based review loop** — three tabs above the article:
+  *&larr; Prev* (last round's frozen version + the comments you sent),
+  *&harr; Diff* (word-level changes since you locked the previous
+  round), *Current &rarr;* (today's file, where you add new comments).
+  When you're done with a pass, *Proceed to the next round* snapshots
+  the current state as the new baseline. Only the previous round is
+  kept — the tool isn't a version-control system.
 - **Folder restore** — the chosen paper folder is remembered across
   refreshes; one click reopens it (Chromium permissions permitting).
 - **CLAUDE.md rules editor** — the one file the tool writes back to
@@ -214,7 +215,7 @@ Open <http://localhost:5173/> in a Chromium browser.
 | Key | Action |
 |---|---|
 | `⌘+Enter` (in comment popup) | Save the comment |
-| `Esc` | Cancel popup / close modal / cancel re-anchor mode |
+| `Esc` | Cancel popup / close modal |
 | `⌘+E` | Open the export modal |
 | `Tab` / `Shift+Tab` (in table editor) | Move between cells |
 
@@ -242,11 +243,11 @@ Workflow:
 Please apply these comments to introduction-merged.md.
 ```
 
-The model edits the source. On the next refresh of the viewer, the
-four-layer re-anchoring locator finds most comments in their new
-positions automatically. Anything it can't recover is shown as
-*orphan*, and you decide whether to re-anchor manually, convert to a
-general note, or delete.
+The model edits the source. Before you hand off to the model, click
+*Proceed to the next round* — this snapshots the file + your
+comments so the next time you reopen, the *Diff* tab shows exactly
+what changed and the *Prev* tab shows what you sent. New comments go
+on the new file; the previous round stays read-only as a record.
 
 ---
 
@@ -259,22 +260,25 @@ general note, or delete.
 - **Persistent annotations.** Comments live in `localStorage` keyed by
   folder name. The chosen folder handle lives in `IndexedDB` so a
   refresh offers one-click reopen.
-- **Robust re-anchoring.** Each annotation stores four selectors —
-  structural anchor (`§S ¶N`), character offset, exact quoted text,
-  and 32-character prefix / suffix — and a four-layer locator (from
-  cheap-and-exact to slow-and-fuzzy) re-finds the passage after the
-  file is edited:
-  1. anchor + exact text (within the original paragraph),
-  2. character offset + exact text (with slack),
-  3. `prefix + text + suffix` (whole article, whitespace-flexible),
-  4. `prefix + (anything) + suffix` (handles in-place paraphrase).
-  The design follows the
-  [Hypothesis client's anchoring pipeline](https://github.com/hypothesis/client/blob/main/src/annotator/anchoring/html.ts);
-  the *quote with context* path is intentionally the most resilient,
-  so paragraph re-orderings and most prose edits don't orphan
-  comments.
-- **Dependencies.** markdown-it and KaTeX from a CDN; no npm install,
-  no build step. Bun is only the static file server.
+- **Round model, not a VCS.** When you click *Proceed to the next
+  round*, the current file content + this round's comments are
+  snapshotted into a single previous-round slot. The *Prev* tab
+  reads from that slot; the *Diff* tab compares it against the
+  current file content (word-level diff via
+  [jsdiff](https://github.com/kpdecker/jsdiff)). Only one previous
+  round is kept — promoting again overwrites it. This keeps the
+  storage model trivially small and avoids drifting into "version
+  control inside a browser tab", which the tool deliberately is not.
+- **Annotation locator (internal).** Highlights for current-round
+  comments are placed by a four-layer locator (structural anchor →
+  character offset → exact context → fuzzy context, modelled on
+  [Hypothesis](https://github.com/hypothesis/client)). It's there to
+  survive the small mid-session edits you might make before
+  proceeding. Comments that fail to locate just don't draw a
+  highlight; their cards still sit in the right pane with the stored
+  quote so you can see what you wrote.
+- **Dependencies.** markdown-it, KaTeX, jsdiff from a CDN; no npm
+  install, no build step. Bun is only the static file server.
 
 ---
 
@@ -285,10 +289,17 @@ general note, or delete.
   in the file, the locator picks the candidate closest to the stored
   character offset. Without a position hint it picks the first hit,
   which may be the wrong one. (Hypothesis has the same caveat.)
-- **Whole-paragraph rewrite.** If the LLM rewrites both the quoted
-  text **and** its prefix/suffix beyond recognition, the locator
-  falls through to *orphan*. There is no semantic / embedding
-  fallback; this is what the manual *Re-anchor* button is for.
+- **Whole-paragraph rewrite.** If the LLM rewrites a passage past the
+  point where the locator can find it, the comment's highlight just
+  doesn't render — but the card still shows in the right pane with
+  the stored quote. The intended workflow is *Proceed to the next
+  round* before the agent edits, so each round's comments stay paired
+  with the version they were written against.
+- **Only one previous round is kept.** The tool isn't a version-
+  control system. Promoting again overwrites the prior baseline; if
+  you need a paper trail across many rounds, *Save as file…* in
+  *Export* writes the current round's comments to a `.txt` you can
+  archive yourself.
 - **Annotations live in your browser.** Clearing `localStorage` for
   `http://localhost:5173`, switching browsers, or wiping the profile
   drops them. The *Save as file…* button in the export modal is the
@@ -319,11 +330,6 @@ export**, not authoring. Possible next steps:
   articulate the relevant style features for each section, and
   produces a focused style guide — built up *incrementally* rather
   than dumped in one shot — is a direction worth exploring.
-- **Version diff.** Snapshot the file at export time; on the next
-  load, offer a word-level diff against the snapshot in a
-  prose-friendly format (red strikethrough + green underline), so the
-  user can see at a glance what the LLM changed.
-
 These are sketches. The intent throughout is to stay minimal: the
 tool should remove friction from review, not become another writing
 environment.

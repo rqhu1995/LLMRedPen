@@ -229,6 +229,153 @@ html, body {
   position: relative;
 }
 
+/* === Tab bar === */
+
+#tab-bar {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 24px;
+  background: rgba(255,255,255,0.96);
+  backdrop-filter: saturate(180%) blur(6px);
+  border-bottom: 1px solid var(--border);
+}
+
+.tab-group {
+  display: flex;
+  gap: 2px;
+}
+
+.tab-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 5px 14px;
+  font-family: var(--sans);
+  font-size: 13px;
+  color: var(--fg-muted);
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+
+.tab-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--fg);
+}
+
+.tab-btn.active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.tab-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.tab-spacer { flex: 1; }
+
+.proceed-btn {
+  padding: 5px 14px;
+  font-family: var(--sans);
+  font-size: 13px;
+  background: var(--accent);
+  color: #fff;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.proceed-btn:hover:not(:disabled) { filter: brightness(1.05); }
+
+.proceed-btn:disabled {
+  background: #d8d8d8;
+  border-color: #d8d8d8;
+  color: #fff;
+  cursor: not-allowed;
+}
+
+/* === Read-only mode (Prev tab) ===
+   The article still renders the same way; we just dim text selection
+   feedback so the user gets a hint that selecting won't pop the comment
+   editor here. */
+#rendered.read-only {
+  background: #fcfbf7;
+}
+#rendered.read-only ::selection {
+  background: rgba(0,0,0,0.08);
+}
+
+.comment-card.read-only {
+  opacity: 0.85;
+  cursor: default;
+}
+
+/* === Diff tab === */
+
+.diff-view {
+  max-width: 920px;
+  margin: 0 auto;
+  padding: 36px 70px 180px 90px;
+  font-family: var(--mono);
+  font-size: 13.5px;
+  line-height: 1.65;
+}
+
+.diff-text {
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  margin: 0;
+  font-family: inherit;
+  color: var(--fg);
+}
+
+.diff-add {
+  text-decoration: none;
+  background: #e6ffec;
+  color: #0a6620;
+  padding: 1px 0;
+}
+
+.diff-del {
+  text-decoration: line-through;
+  background: #ffeef0;
+  color: #b31d28;
+  padding: 1px 0;
+}
+
+.diff-empty {
+  color: var(--fg-muted);
+  font-family: var(--sans);
+  font-style: italic;
+  text-align: center;
+  margin-top: 60px;
+}
+
+#comments-pane.diff-hidden #comments-list,
+#comments-pane.diff-hidden #comments-pane-actions {
+  display: none;
+}
+
+#comments-pane.diff-hidden::after {
+  content: 'Diff tab — comments are hidden here. Switch to Prev or Current to see notes.';
+  display: block;
+  margin: 24px 18px;
+  padding: 12px 14px;
+  background: var(--accent-soft);
+  border-radius: 4px;
+  font-family: var(--sans);
+  font-size: 12px;
+  color: var(--fg-muted);
+  line-height: 1.5;
+}
+
 #welcome {
   max-width: 600px;
   margin: 80px auto;
@@ -942,33 +1089,6 @@ button.danger:hover:not(:disabled) {
   color: var(--accent);
 }
 
-/* === Re-anchor mode ===
-   Body-level class set while the user is choosing a new home for an
-   orphaned annotation. Dashed orange outline around the article + a fixed
-   banner explaining the mode. The next text selection inside the article
-   commits to the re-anchor (see handleSelection). */
-body.reanchor-mode #rendered {
-  outline: 2px dashed #e69500;
-  outline-offset: 8px;
-}
-body.reanchor-mode #content::before {
-  content: 'Select text to re-anchor this comment · Esc to cancel';
-  position: fixed;
-  top: 18px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: #e69500;
-  color: #fff;
-  padding: 8px 18px;
-  border-radius: 4px;
-  font-family: var(--sans);
-  font-size: 13px;
-  font-weight: 500;
-  z-index: 3000;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.18);
-  pointer-events: none;
-}
-
 /* === Visual table editor ===
    Each cell is a real <input>; Tab moves through cells; per-row and
    per-column "−" buttons sit outside the grid for clear targeting. */
@@ -1200,44 +1320,6 @@ table.te-grid td.te-axis button:hover {
 }
 
 .comment-card.flash { background: var(--accent-soft); }
-
-/* Orphan: the annotation couldn't be located in the current rendered file.
-   Warm-orange left rail + muted background so it visually demands attention
-   without being alarming. Cards are not clickable (no scroll target), only
-   their Re-anchor / To note / Edit / Delete buttons are. */
-.comment-card.orphan {
-  border-left: 3px solid #e69500;
-  background: #fff8ed;
-  cursor: default;
-}
-.comment-card.orphan:hover {
-  border-color: #e69500;
-  background: #fff1d6;
-}
-.comment-card.orphan .comment-anchor {
-  color: var(--fg-muted);
-}
-.orphan-badge {
-  display: inline-block;
-  font-size: 10px;
-  font-weight: 600;
-  background: #e69500;
-  color: #fff;
-  padding: 1px 6px;
-  border-radius: 3px;
-  letter-spacing: 0.04em;
-  vertical-align: middle;
-}
-.comment-card.orphan .orphan-meta {
-  font-size: 11.5px;
-  color: #8a5a00;
-  margin: 4px 0 6px;
-  font-style: italic;
-  word-wrap: break-word;
-}
-/* Always reveal the action buttons on an orphan card so the user knows the
-   re-anchor / convert paths exist without having to hover first. */
-.comment-card.orphan .comment-actions { opacity: 1; }
 
 .comment-card-header {
   display: flex;
