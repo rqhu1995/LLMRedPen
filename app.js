@@ -28,6 +28,13 @@ let folderFileNames = [];     // sorted list of .md filenames currently in the f
 //   'prev'    — previous-round snapshot + its comments (read-only)
 //   'diff'    — word-level diff of previous content vs current file content
 let activeTab = 'current';
+
+// Whether to render leading-blockquote front-matter and HTML-comment
+// metadata blocks. Off by default — these are author/changelog notes
+// that pollute the reading view AND get counted as paragraphs in the
+// §S ¶N numbering. Toggle persisted globally (not per-folder) since it's
+// a personal reading preference.
+let showMetadata = false;
 let mdParser = null;          // markdown-it instance
 let activeSelection = null;   // { text, anchor, contextBefore, contextAfter, charOffset }
 let rulesData = null;         // { handle, text, sections } while rules editor is open
@@ -120,6 +127,8 @@ async function init() {
   });
   checkBrowserSupport();
   applyPlatformHotkeys();
+  loadShowMetadata();
+  updateMetadataToggleLabel();
   bindUIEvents();
   await offerRestore();
 }
@@ -204,6 +213,77 @@ function escapeHtml(s) {
   return s.replace(/[&<>"']/g, (c) => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
   }[c]));
+}
+
+// =================== Metadata stripping ==============================
+//
+// Two patterns drafts commonly carry that aren't body prose:
+//
+//   1. A leading blockquote at the top of the file (a "Working draft"
+//      note, version notice, etc.) before the first body paragraph.
+//      It can sit before or after the H1; we tolerate either.
+//   2. HTML comments anywhere — `<!-- changelog: ... -->` blocks the
+//      author leaves between paragraphs. With `html: false` set on
+//      markdown-it, these otherwise render as escaped text and pollute
+//      both the reading view and the §S ¶N numbering.
+//
+// Stripping happens at source level (before markdown-it sees the text)
+// so the rendered DOM has no metadata at all and the paragraph counter
+// naturally skips past it.
+
+function stripMetadata(text) {
+  // (1) HTML comments — multi-line, anywhere.
+  text = text.replace(/<!--[\s\S]*?-->/g, '');
+
+  // (2) Leading blockquote(s). Walk lines from the top, allowing blank
+  // lines and headings to pass through. The first contiguous run of
+  // `>`-prefixed lines we encounter gets dropped. As soon as we see a
+  // body line (anything that's neither blank, heading, nor blockquote)
+  // we stop touching the file.
+  const lines = text.split('\n');
+  const out = [];
+  let stillLeading = true;
+  let i = 0;
+  while (i < lines.length) {
+    if (!stillLeading) { out.push(lines[i++]); continue; }
+    const trimmed = lines[i].trim();
+    if (trimmed === '' || /^#{1,6}\s/.test(trimmed)) {
+      out.push(lines[i++]);
+      continue;
+    }
+    if (trimmed.startsWith('>')) {
+      while (i < lines.length && lines[i].trim().startsWith('>')) i++;
+      continue;
+    }
+    stillLeading = false;
+    out.push(lines[i++]);
+  }
+  return out.join('\n');
+}
+
+function loadShowMetadata() {
+  try { showMetadata = localStorage.getItem(ANNOTATIONS_PREFIX + 'showMetadata') === 'true'; }
+  catch (e) { showMetadata = false; }
+}
+
+function persistShowMetadata() {
+  try { localStorage.setItem(ANNOTATIONS_PREFIX + 'showMetadata', showMetadata ? 'true' : 'false'); }
+  catch (e) { /* ignore */ }
+}
+
+function toggleShowMetadata() {
+  showMetadata = !showMetadata;
+  persistShowMetadata();
+  updateMetadataToggleLabel();
+  if (currentFile) renderActiveTab();
+}
+
+function updateMetadataToggleLabel() {
+  const btn = document.getElementById('toggle-metadata');
+  if (!btn) return;
+  btn.textContent = showMetadata ? '✓ Metadata shown' : 'Show metadata';
+  btn.classList.toggle('active', showMetadata);
+  btn.setAttribute('aria-pressed', showMetadata ? 'true' : 'false');
 }
 
 // ============================== Folder picker ========================
@@ -548,7 +628,9 @@ function renderActiveTab() {
   rendered.hidden = false;
   document.getElementById('comments-pane').classList.remove('diff-hidden');
 
-  rendered.innerHTML = renderMarkdownWithMath(getDisplayContent());
+  const rawContent = getDisplayContent();
+  const renderText = showMetadata ? rawContent : stripMetadata(rawContent);
+  rendered.innerHTML = renderMarkdownWithMath(renderText);
   numberSectionsAndParagraphs(rendered);
   refreshAnnotationsUI();
 
@@ -1514,14 +1596,30 @@ function buildCommentCard(ann, opts) {
 
 function scrollToAnchor(ann) {
   const rendered = document.getElementById('rendered');
-  const block = Array.from(rendered.querySelectorAll('[data-anchor]'))
+
+  // Try the stored anchor first (the fast path for fresh annotations).
+  let block = Array.from(rendered.querySelectorAll('[data-anchor]'))
     .find((el) => el.dataset.anchor === ann.anchor);
+
+  // Fallback for stale anchors: if the §S ¶N block no longer exists at
+  // the stored label (paragraphs renumbered, document restructured, or
+  // metadata-hidden mode shifts §1 ¶3 → §1 ¶2), find the actual mark
+  // in the article and scroll to wherever it landed.
+  const mark = rendered.querySelector(`mark.annotation[data-ann-id="${ann.timestamp}"]`);
+  if (!block && mark) {
+    mark.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    mark.style.transition = 'background 0.25s ease';
+    const orig = mark.style.background;
+    mark.style.background = 'var(--highlight-hover)';
+    setTimeout(() => { mark.style.background = orig; }, 900);
+    return;
+  }
   if (!block) return;
+
   block.scrollIntoView({ behavior: 'smooth', block: 'center' });
 
   // Flash the matching mark for text-selection annotations, or the whole
   // paragraph for paragraph-level (no-text) annotations.
-  const mark = block.querySelector(`mark.annotation[data-ann-id="${ann.timestamp}"]`);
   if (mark) {
     mark.style.transition = 'background 0.25s ease';
     const orig = mark.style.background;
@@ -2394,11 +2492,18 @@ function renderDiffTab() {
     return;
   }
 
-  const oldText = baseline.content;
-  const newText = currentFile.content;
+  // When the user has metadata hidden in the reading view, also strip it
+  // from the diff inputs so the diff stays focused on prose changes
+  // (changelog entries the author writes between rounds shouldn't show as
+  // edits to the agent's revision). Toggle on to compare raw sources.
+  const oldText = showMetadata ? baseline.content : stripMetadata(baseline.content);
+  const newText = showMetadata ? currentFile.content : stripMetadata(currentFile.content);
 
   if (oldText === newText) {
-    container.innerHTML = '<p class="diff-empty">No changes between the previous round and the current file.</p>';
+    const msg = showMetadata
+      ? 'No changes between the previous round and the current file.'
+      : 'No prose changes between the previous round and the current file. (Toggle <em>Show metadata</em> to include changelog comments and front-matter.)';
+    container.innerHTML = `<p class="diff-empty">${msg}</p>`;
     return;
   }
 
@@ -2536,6 +2641,7 @@ function bindUIEvents() {
   document.getElementById('add-general-note').onclick = addGeneralNote;
   document.getElementById('proceed-next-round').onclick = promoteToNextRound;
   document.getElementById('reload-current-file').onclick = reloadCurrentFile;
+  document.getElementById('toggle-metadata').onclick = toggleShowMetadata;
 
   document.querySelectorAll('.tab-btn').forEach((btn) => {
     btn.onclick = () => setActiveTab(btn.dataset.tab);
