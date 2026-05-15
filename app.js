@@ -285,6 +285,16 @@ async function applyFolder(handle) {
   document.getElementById('comments-pane').hidden = false;
 
   renderCommentsList();
+
+  // Auto-reopen the last file the user was looking at, if it still exists.
+  // Removes the "now I have to find the file again" friction after a
+  // browser refresh (the folder restores silently when its FS permission
+  // survives; the file should follow).
+  const last = loadLastOpenedFile();
+  if (last && folderFileNames.includes(last)) {
+    try { await openFile(last); }
+    catch (e) { console.warn('[redpen] auto-reopen of last file failed', e); }
+  }
 }
 
 async function listFiles() {
@@ -435,6 +445,7 @@ async function openFile(name) {
   const file = await handle.getFile();
   const text = await file.text();
   currentFile = { name, handle, content: text };
+  persistLastOpenedFile(name);
 
   document.querySelectorAll('.file-link').forEach((a) => {
     a.classList.toggle('active', a.dataset.filename === name);
@@ -865,6 +876,18 @@ function annotationsKey() {
 
 function baselinesKey() {
   return ANNOTATIONS_PREFIX + 'baselines:' + (directoryHandle ? directoryHandle.name : 'default');
+}
+
+function lastFileKey() {
+  return ANNOTATIONS_PREFIX + 'lastFile:' + (directoryHandle ? directoryHandle.name : 'default');
+}
+
+function persistLastOpenedFile(name) {
+  try { localStorage.setItem(lastFileKey(), name); } catch (e) { /* ignore */ }
+}
+
+function loadLastOpenedFile() {
+  try { return localStorage.getItem(lastFileKey()); } catch (e) { return null; }
 }
 
 function persistAnnotations() {
@@ -2405,6 +2428,39 @@ function renderDiffTab() {
   container.appendChild(pre);
 }
 
+// ============================== Reload current file ==================
+//
+// Re-reads the current file from disk and re-renders the active tab.
+// Use case: the user has handed comments to the agent and wants to check
+// "is the agent done editing yet?" without refreshing the whole browser
+// tab (which would lose the active file selection and tab state).
+
+async function reloadCurrentFile() {
+  if (!currentFile || !directoryHandle) return;
+  const fname = currentFile.name;
+  try {
+    const handle = await directoryHandle.getFileHandle(fname);
+    const file = await handle.getFile();
+    const text = await file.text();
+    const changed = text !== currentFile.content;
+    currentFile = { name: fname, handle, content: text };
+    renderActiveTab();
+    flashReloadButton(changed ? 'Reloaded ✓' : 'No changes');
+  } catch (e) {
+    console.warn('[redpen] reload failed', e);
+    alert('Reload failed: ' + e.message);
+  }
+}
+
+function flashReloadButton(label) {
+  const btn = document.getElementById('reload-current-file');
+  if (!btn) return;
+  const orig = btn.dataset.origLabel || btn.innerHTML;
+  btn.dataset.origLabel = orig;
+  btn.textContent = label;
+  setTimeout(() => { btn.innerHTML = btn.dataset.origLabel; }, 1200);
+}
+
 // ============================== Promote to next round =================
 //
 // Snapshots the current file content + this round's comments into the
@@ -2413,7 +2469,7 @@ function renderDiffTab() {
 // sent to the agent". Next time they open the file (after the agent has
 // edited it on disk), the Diff tab will show what changed.
 
-function promoteToNextRound() {
+async function promoteToNextRound() {
   if (!currentFile || !isInteractiveTab()) return;
   const fname = currentFile.name;
   const cur = annotations[fname] || [];
@@ -2425,20 +2481,23 @@ function promoteToNextRound() {
       `Lock the current version of "${fname}" as the new previous-round baseline?\n\n` +
       `What this does:\n` +
       `  • Discards the existing previous round (${prev.annotations.length} comment(s)).\n` +
-      `  • Snapshots the current file + your ${cur.length} comment(s) as the new baseline.\n` +
+      `  • Snapshots the file you just reviewed + your ${cur.length} comment(s) as the new baseline.\n` +
+      `  • Re-reads "${fname}" from disk so the Current tab reflects whatever's there now.\n` +
       `  • Clears your current comments so the next round starts blank.\n\n` +
       `This cannot be undone.`;
   } else {
     msg =
       `Lock the current version of "${fname}" as the previous-round baseline?\n\n` +
       `What this does:\n` +
-      `  • Snapshots the current file + your ${cur.length} comment(s).\n` +
-      `  • Clears your current comments so the next round starts blank.\n` +
-      `  • When the file is edited later (e.g. by the agent), the Diff tab will show what changed.\n\n` +
+      `  • Snapshots the file you just reviewed + your ${cur.length} comment(s).\n` +
+      `  • Re-reads "${fname}" from disk so the Current tab reflects whatever's there now.\n` +
+      `  • Clears your current comments so the next round starts blank.\n\n` +
       `Continue?`;
   }
   if (!confirm(msg)) return;
 
+  // Step 1: snapshot what the user just reviewed (the in-memory content
+  // they saw + their comments) into the previous-round slot.
   baselines[fname] = {
     content: currentFile.content,
     annotations: cur.slice(),
@@ -2448,10 +2507,24 @@ function promoteToNextRound() {
   persistBaselines();
   persistAnnotations();
 
-  // Stay on Current; it's now empty (fresh round). Prev/Diff become
-  // available since we just created a baseline.
+  // Step 2: re-read the file from disk so the Current tab reflects what's
+  // there *now*. This is the whole point of Proceed-to-next-round in the
+  // common workflow: user has handed comments to the agent, agent has
+  // edited the file, user wants to see the new version. Without this,
+  // they'd have to refresh the whole browser tab to pick up the changes.
+  try {
+    const handle = await directoryHandle.getFileHandle(fname);
+    const file = await handle.getFile();
+    currentFile = { name: fname, handle, content: await file.text() };
+  } catch (e) {
+    console.warn('[redpen] re-read after promote failed', e);
+    // Fall through with the in-memory content. Prev/Diff still work.
+  }
+
+  // Stay on Current; it's now empty of comments and (likely) showing the
+  // agent's revised content. Prev/Diff are now available.
   refreshTabAvailability();
-  refreshAnnotationsUI();
+  renderActiveTab();
 }
 
 // ============================== UI event bindings ====================
@@ -2462,6 +2535,7 @@ function bindUIEvents() {
   document.getElementById('open-rules-editor').onclick = openRulesEditor;
   document.getElementById('add-general-note').onclick = addGeneralNote;
   document.getElementById('proceed-next-round').onclick = promoteToNextRound;
+  document.getElementById('reload-current-file').onclick = reloadCurrentFile;
 
   document.querySelectorAll('.tab-btn').forEach((btn) => {
     btn.onclick = () => setActiveTab(btn.dataset.tab);

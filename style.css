@@ -280,6 +280,22 @@ html, body {
 
 .tab-spacer { flex: 1; }
 
+.reload-btn {
+  padding: 5px 12px;
+  font-family: var(--sans);
+  font-size: 13px;
+  background: transparent;
+  color: var(--fg-muted);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: color 0.12s, border-color 0.12s;
+}
+
+.reload-btn:hover { color: var(--fg); border-color: var(--fg-muted); }
+
+.reload-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
 .proceed-btn {
   padding: 5px 14px;
   font-family: var(--sans);
