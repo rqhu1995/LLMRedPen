@@ -19,6 +19,7 @@
 let directoryHandle = null;   // FileSystemDirectoryHandle of the paper folder
 let currentFile = null;       // { name, handle, content }
 let annotations = {};         // { filename: [ { anchor, text, comment, ... } ] }
+let folderFileNames = [];     // sorted list of .md filenames currently in the folder
 let mdParser = null;          // markdown-it instance
 let activeSelection = null;   // { text, anchor, contextBefore, contextAfter, charOffset }
 let rulesData = null;         // { handle, text, sections } while rules editor is open
@@ -277,6 +278,7 @@ async function applyFolder(handle) {
 
   await listFiles();
   loadAnnotations();
+  renderStrandedSidebar();
 
   document.getElementById('export-comments').disabled = false;
   document.getElementById('open-rules-editor').disabled = false;
@@ -293,6 +295,7 @@ async function listFiles() {
     }
   }
   files.sort((a, b) => a.localeCompare(b));
+  folderFileNames = files;
 
   const list = document.getElementById('file-list');
   list.innerHTML = '';
@@ -304,6 +307,124 @@ async function listFiles() {
     a.dataset.filename = name;
     a.onclick = (e) => { e.preventDefault(); openFile(name); };
     list.appendChild(a);
+  }
+  renderStrandedSidebar();
+}
+
+// Annotation buckets whose key isn't in the current folder file list — most
+// commonly because the user renamed the file outside the app. We surface
+// them in the sidebar so the user can reassign or delete instead of
+// silently losing comments.
+function renderStrandedSidebar() {
+  const section = document.getElementById('stranded-section');
+  const list = document.getElementById('stranded-list');
+  if (!list) return;
+
+  const folderSet = new Set(folderFileNames);
+  const stranded = Object.keys(annotations)
+    .filter((name) => !folderSet.has(name) && (annotations[name] || []).length)
+    .sort((a, b) => a.localeCompare(b));
+
+  if (!stranded.length) {
+    section.hidden = true;
+    list.innerHTML = '';
+    return;
+  }
+
+  section.hidden = false;
+  list.innerHTML = '';
+  for (const name of stranded) {
+    list.appendChild(buildStrandedItem(name));
+  }
+}
+
+function buildStrandedItem(oldName) {
+  const item = document.createElement('div');
+  item.className = 'stranded-item';
+  item.dataset.key = oldName;
+
+  const row = document.createElement('div');
+  row.className = 'stranded-row';
+
+  const nameEl = document.createElement('span');
+  nameEl.className = 'stranded-name';
+  nameEl.textContent = oldName;
+  nameEl.title = oldName;
+
+  const countEl = document.createElement('span');
+  countEl.className = 'stranded-count';
+  countEl.textContent = String((annotations[oldName] || []).length);
+
+  const reassignBtn = document.createElement('button');
+  reassignBtn.className = 'stranded-reassign';
+  reassignBtn.textContent = 'Reassign…';
+  reassignBtn.onclick = () => {
+    const picker = item.querySelector('.stranded-picker');
+    picker.hidden = !picker.hidden;
+  };
+
+  row.append(nameEl, countEl, reassignBtn);
+  item.appendChild(row);
+
+  const picker = document.createElement('div');
+  picker.className = 'stranded-picker';
+  picker.hidden = true;
+
+  const select = document.createElement('select');
+  const placeholder = document.createElement('option');
+  placeholder.value = '';
+  placeholder.textContent = '— pick target file —';
+  select.appendChild(placeholder);
+  for (const name of folderFileNames) {
+    const opt = document.createElement('option');
+    opt.value = name;
+    opt.textContent = name;
+    if (currentFile && currentFile.name === name) opt.selected = true;
+    select.appendChild(opt);
+  }
+
+  const migrateBtn = document.createElement('button');
+  migrateBtn.textContent = 'Migrate';
+  migrateBtn.className = 'primary';
+  migrateBtn.onclick = () => {
+    const target = select.value;
+    if (!target) return;
+    migrateBucket(oldName, target);
+  };
+
+  const cancelBtn = document.createElement('button');
+  cancelBtn.textContent = 'Cancel';
+  cancelBtn.onclick = () => { picker.hidden = true; };
+
+  const deleteBtn = document.createElement('button');
+  deleteBtn.textContent = 'Delete';
+  deleteBtn.className = 'danger';
+  deleteBtn.onclick = () => {
+    if (!confirm(`Delete ${(annotations[oldName] || []).length} annotation(s) for "${oldName}"?\n\nThis cannot be undone.`)) return;
+    delete annotations[oldName];
+    persistAnnotations();
+    renderStrandedSidebar();
+  };
+
+  picker.append(select, migrateBtn, cancelBtn, deleteBtn);
+  item.appendChild(picker);
+
+  return item;
+}
+
+function migrateBucket(from, to) {
+  const src = annotations[from] || [];
+  if (!src.length) return;
+  const dst = annotations[to] || [];
+  // Append; preserve original timestamps so the locator and right-pane
+  // sort still work coherently.
+  annotations[to] = dst.concat(src);
+  delete annotations[from];
+  persistAnnotations();
+  renderStrandedSidebar();
+  // If the user is currently on the target file, refresh highlights + cards.
+  if (currentFile && currentFile.name === to) {
+    refreshAnnotationsUI();
   }
 }
 
@@ -1025,9 +1146,17 @@ function hideMarkTooltip() {
 
 // ============================== Export ===============================
 
-function buildExportText() {
-  const files = Object.keys(annotations).filter((f) => (annotations[f] || []).length).sort();
-  if (!files.length) return '(no annotations yet)';
+function buildExportText(scope) {
+  let files;
+  if (scope === 'current') {
+    if (!currentFile || !(annotations[currentFile.name] || []).length) {
+      return '(no annotations on this file yet)';
+    }
+    files = [currentFile.name];
+  } else {
+    files = Object.keys(annotations).filter((f) => (annotations[f] || []).length).sort();
+    if (!files.length) return '(no annotations yet)';
+  }
 
   const out = [];
   for (const fname of files) {
@@ -1051,6 +1180,11 @@ function buildExportText() {
     }
   }
   return out.join('\n');
+}
+
+function getExportScope() {
+  const checked = document.querySelector('input[name="export-scope"]:checked');
+  return checked ? checked.value : (currentFile ? 'current' : 'all');
 }
 
 function compareByAnchor(a, b) {
@@ -1079,16 +1213,47 @@ function parseAnchor(s) {
 }
 
 function showExportModal() {
+  // Default scope: current file if one is open, else all.
+  const radios = document.querySelectorAll('input[name="export-scope"]');
+  const currentRadio = document.querySelector('input[name="export-scope"][value="current"]');
+  const nameSpan = document.getElementById('export-scope-current-name');
+
+  if (currentFile) {
+    currentRadio.disabled = false;
+    currentRadio.checked = true;
+    nameSpan.textContent = `(${currentFile.name})`;
+  } else {
+    currentRadio.disabled = true;
+    currentRadio.checked = false;
+    document.querySelector('input[name="export-scope"][value="all"]').checked = true;
+    nameSpan.textContent = '(no file open)';
+  }
+
+  // Re-render on scope change.
+  for (const r of radios) r.onchange = () => { renderExportList(); updateDeleteButton(); };
+  updateDeleteButton();
   renderExportList();
   document.getElementById('export-modal').hidden = false;
 }
 
+function updateDeleteButton() {
+  const btn = document.getElementById('clear-all');
+  const scope = getExportScope();
+  if (scope === 'current' && currentFile) {
+    btn.textContent = `Delete this file's`;
+    btn.title = `Delete annotations for ${currentFile.name}`;
+  } else {
+    btn.textContent = 'Delete all';
+    btn.title = 'Delete annotations for every file in this folder';
+  }
+}
+
 function renderExportList() {
-  document.getElementById('export-text').textContent = buildExportText();
+  document.getElementById('export-text').textContent = buildExportText(getExportScope());
 }
 
 async function copyToClipboard() {
-  const text = buildExportText();
+  const text = buildExportText(getExportScope());
   try {
     await navigator.clipboard.writeText(text);
     const btn = document.getElementById('copy-clipboard');
@@ -1102,8 +1267,12 @@ async function copyToClipboard() {
 
 async function saveAsFile() {
   if (!directoryHandle) return;
-  const text = buildExportText();
-  const suggested = `${directoryHandle.name}-comments.txt`;
+  const scope = getExportScope();
+  const text = buildExportText(scope);
+  const base = (scope === 'current' && currentFile)
+    ? currentFile.name.replace(/\.md$/i, '')
+    : directoryHandle.name;
+  const suggested = `${base}-comments.txt`;
 
   try {
     const handle = await window.showSaveFilePicker({
@@ -1128,10 +1297,17 @@ async function saveAsFile() {
 }
 
 function clearAllAnnotations() {
-  if (!confirm('Delete all annotations across all files in this folder?\n\nThis cannot be undone.')) return;
-  annotations = {};
+  const scope = getExportScope();
+  if (scope === 'current' && currentFile) {
+    if (!confirm(`Delete all annotations for "${currentFile.name}"?\n\nThis cannot be undone.`)) return;
+    delete annotations[currentFile.name];
+  } else {
+    if (!confirm('Delete all annotations across every file in this folder?\n\nThis cannot be undone.')) return;
+    annotations = {};
+  }
   persistAnnotations();
   refreshAnnotationsUI();
+  renderStrandedSidebar();
   renderExportList();
 }
 

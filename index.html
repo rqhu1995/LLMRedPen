@@ -17,6 +17,11 @@
         <div id="folder-name" class="folder-name"></div>
       </header>
       <nav id="file-list" aria-label="Markdown files in folder"></nav>
+      <section id="stranded-section" hidden aria-label="Annotations from missing files">
+        <h3 class="stranded-title">Annotations from missing files</h3>
+        <p class="stranded-help">Likely renamed. Reassign to the current file or delete.</p>
+        <div id="stranded-list"></div>
+      </section>
       <footer id="sidebar-footer">
         <button id="open-rules-editor" disabled>Edit CLAUDE.md rules</button>
         <div class="hint">⌘+E export · ⌘+Enter save · Esc cancel</div>
@@ -62,16 +67,20 @@
   <div id="export-modal" class="modal" hidden>
     <div class="modal-content">
       <header class="modal-header">
-        <h2>All comments</h2>
+        <h2>Export comments</h2>
         <button class="modal-close" id="close-export" aria-label="Close">×</button>
       </header>
+      <div class="export-scope">
+        <label><input type="radio" name="export-scope" value="current" checked> This file <span id="export-scope-current-name" class="muted"></span></label>
+        <label><input type="radio" name="export-scope" value="all"> All files in this folder</label>
+      </div>
       <div class="modal-body">
         <pre id="export-text"></pre>
       </div>
       <footer class="modal-footer">
         <button id="copy-clipboard" class="primary">Copy to clipboard</button>
         <button id="save-file">Save as file…</button>
-        <button id="clear-all" class="danger">Delete all</button>
+        <button id="clear-all" class="danger">Delete</button>
       </footer>
     </div>
   </div>
