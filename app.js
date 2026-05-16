@@ -1,7 +1,7 @@
 /* md-annotator — main browser logic.
  *
  * Single-folder workflow:
- *   1. User picks a paper folder via showDirectoryPicker() — must contain CLAUDE.md at root.
+ *   1. User picks a folder via showDirectoryPicker(). Any folder with .md files works.
  *   2. Sidebar lists all .md files in that folder.
  *   3. Clicking a file renders it (markdown-it + KaTeX) with §-section and ¶-paragraph markers.
  *   4. Selecting text opens a comment popup; comments persist in localStorage keyed by folder name.
@@ -387,14 +387,10 @@ async function openFolder() {
 }
 
 async function applyFolder(handle) {
-  // Refuse folders that don't have CLAUDE.md at their root.
-  try {
-    await handle.getFileHandle('CLAUDE.md');
-  } catch (e) {
-    alert(`"${handle.name}" does not contain CLAUDE.md at its root.\n\nThis viewer expects a paper folder where CLAUDE.md (the writing-rules file) lives next to the manuscript .md files. Try a different folder.`);
-    return;
-  }
-
+  // Any folder with .md files is acceptable. The viewer used to require
+  // CLAUDE.md at the root (because the rules editor needed it as its
+  // source of truth) but the editor now creates the file on demand if
+  // it's missing, so the gate is gone.
   directoryHandle = handle;
   await saveHandle(handle);
 
@@ -460,7 +456,9 @@ async function listFiles() {
   const list = document.getElementById('file-list');
   list.innerHTML = '';
 
-  // Manuscript group — always shown (folder is guaranteed to have CLAUDE.md).
+  // Manuscript group — always shown so the section label is consistent
+  // even when the folder is empty (the rendered group falls back to a
+  // blank list, which still beats "where did the section go").
   appendFileGroup(list, 'Manuscript', rootFiles);
   // Plans group — only when at least one plan file exists.
   if (planFiles.length) appendFileGroup(list, 'Plans', planFiles, { plan: true });
@@ -1862,7 +1860,18 @@ function editComment(timestamp) {
 
 async function openRulesEditor() {
   if (!directoryHandle) return;
-  const handle = await directoryHandle.getFileHandle('CLAUDE.md');
+  let handle;
+  try {
+    handle = await directoryHandle.getFileHandle('CLAUDE.md');
+  } catch (e) {
+    if (!confirm(`No CLAUDE.md found in "${directoryHandle.name}".\n\nCreate one now? The editor will open empty; nothing is written to disk until you save.`)) return;
+    try {
+      handle = await directoryHandle.getFileHandle('CLAUDE.md', { create: true });
+    } catch (err) {
+      alert('Could not create CLAUDE.md: ' + err.message);
+      return;
+    }
+  }
   const file = await handle.getFile();
   const text = await file.text();
   rulesData = {

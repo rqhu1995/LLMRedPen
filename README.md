@@ -188,10 +188,11 @@ redpen
 
 Open <http://localhost:5173/> in a Chromium browser.
 
-1. **Open a paper folder.** Click *Open paper folder…* and pick a
-   directory. The viewer requires a `CLAUDE.md` at the folder's root
-   (this is the writing-rules file it can edit; everything else is
-   read-only). If `CLAUDE.md` is missing, the folder is rejected.
+1. **Open a folder.** Click *Open paper folder…* and pick any
+   directory containing `.md` files. The viewer renders them; nothing
+   else on disk is touched. The only file the viewer ever writes back
+   is `CLAUDE.md` (via the rules editor), and only when you explicitly
+   save in that editor — `CLAUDE.md` does not need to exist up front.
 2. **Read.** The left sidebar lists every `.md` file in the folder.
    Click one to render it. Each paragraph gets a `§S ¶N` anchor in
    the margin.
