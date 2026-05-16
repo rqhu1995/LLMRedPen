@@ -932,11 +932,20 @@ function textAfter(range, anchorEl, n) {
   return r.toString().slice(0, n);
 }
 
+// Range captured at popup-open time, applied as a persistent
+// .pending-annotation mark only once the user engages with the popup
+// (clicks into it / focuses the textarea). Until then, the user's native
+// browser selection stays alive so they can Cmd+C the text they just
+// highlighted instead of annotating it. See the focusin handler in
+// bindUIEvents.
+let pendingRangeForPopup = null;
+
 // Show the comment popup. Two independent parameters:
 //   positionRect — DOMRect-like ({top, bottom, left, right}) for where to
 //                  anchor the popup on screen. null = center on viewport.
-//   pendingRange — Range to wrap in a transient <mark.pending-annotation>
-//                  for visual selection feedback. null = no pending mark
+//   pendingRange — Range that may be wrapped in a transient
+//                  <mark.pending-annotation> for visual feedback once the
+//                  user engages with the popup. null = no pending mark
 //                  (used for general notes and paragraph-level notes).
 function showCommentPopup(positionRect, pendingRange) {
   const popup = document.getElementById('comment-popup');
@@ -962,10 +971,11 @@ function showCommentPopup(positionRect, pendingRange) {
   popup.style.top = Math.max(8, top) + 'px';
   popup.style.left = Math.max(8, left) + 'px';
 
-  // Apply pending highlight only when a real Range was provided. Paragraph-
-  // level notes use the `.pending-paragraph` block outline instead (set
-  // by the caller).
-  if (pendingRange) applyPendingHighlight(pendingRange);
+  // Store the range; defer wrapping until commitPendingHighlight() runs
+  // on first user engagement with the popup. Wrapping eagerly would
+  // collapse the user's native selection (extractContents mutates the
+  // DOM), breaking Cmd+C if they meant to copy rather than annotate.
+  pendingRangeForPopup = pendingRange || null;
 
   const label =
     activeSelection.type === 'general' ? '— note (not anchored)' :
@@ -973,11 +983,24 @@ function showCommentPopup(positionRect, pendingRange) {
                                         activeSelection.anchor;
   document.getElementById('comment-anchor-display').textContent = label;
 
-  popup.hidden = false;
-
   const ta = document.getElementById('comment-text');
   ta.value = '';
-  ta.focus();
+  popup.hidden = false;
+  // NOTE: deliberately no ta.focus() here. Auto-focus would steal the
+  // browser selection (the textarea becoming focused collapses the
+  // native selection in the article), making it impossible to Cmd+C
+  // the text you just highlighted. The user picks: click into the
+  // textarea to type a comment, or Cmd+C right now to copy.
+}
+
+// Called the first time the user engages with the popup (focusin on any
+// of its controls). Promotes the deferred pending highlight so the
+// commented passage stays visually marked while they type, even after
+// the native selection collapses on textarea focus.
+function commitPendingHighlight() {
+  if (!pendingRangeForPopup) return;
+  applyPendingHighlight(pendingRangeForPopup);
+  pendingRangeForPopup = null;
 }
 
 // Wrap the current selection's range in a transient <mark> that visually
@@ -1022,7 +1045,10 @@ function hideCommentPopup() {
   clearPendingHighlights();
   document.getElementById('comment-popup').hidden = true;
   activeSelection = null;
-  // Don't clear selection — user might still want to re-select.
+  pendingRangeForPopup = null;
+  // Don't clear the browser selection — the user may have just dismissed
+  // the popup specifically because they wanted to copy the highlighted
+  // text instead.
 }
 
 function saveComment() {
@@ -2992,6 +3018,30 @@ function bindUIEvents() {
   document.getElementById('comment-cancel').onclick = () => {
     hideCommentPopup();
   };
+
+  // First time the user actually engages with the popup, swap the
+  // deferred native selection for the persistent .pending-annotation
+  // mark. Focusin fires when the user clicks into the textarea, tabs
+  // in, or clicks any button — all of which would collapse the native
+  // selection anyway, so this is the right moment to commit.
+  document.getElementById('comment-popup').addEventListener('focusin', () => {
+    commitPendingHighlight();
+  });
+
+  // Click outside the popup dismisses it without saving — the user
+  // probably just wants the popup gone (e.g. to read the article, or
+  // because the auto-popup was unwanted in the first place). Don't
+  // touch the user's selection; let the browser handle it normally.
+  document.addEventListener('mousedown', (e) => {
+    const popup = document.getElementById('comment-popup');
+    if (popup.hidden) return;
+    if (popup.contains(e.target)) return;
+    // Margin §-anchor clicks open their own paragraph-note popup via
+    // addParagraphNote, which calls hideCommentPopup at the top to clean
+    // up the previous popup. Let that flow run.
+    if (e.target.closest && e.target.closest('.anchor-label')) return;
+    hideCommentPopup();
+  });
 
   // Comment textarea: ⌘+Enter to save, Esc to cancel.
   document.getElementById('comment-text').addEventListener('keydown', (e) => {
