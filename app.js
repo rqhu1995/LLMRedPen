@@ -441,10 +441,38 @@ function prettyGroupName(slug) {
   return slug.charAt(0).toUpperCase() + slug.slice(1);
 }
 
+// Max recursion depth inside a top-level subfolder. Plenty for the
+// manuscript/plans/ + paper-style layouts the tool was built for;
+// keeps the sidebar from exploding if someone aims it at a deeply
+// nested tree like a node_modules sibling that crept past the filter.
+const MAX_SUBFOLDER_DEPTH = 4;
+
+async function collectMdRecursively(dirHandle, prefix, depth) {
+  const out = [];
+  if (depth > MAX_SUBFOLDER_DEPTH) return out;
+  try {
+    for await (const [name, entry] of dirHandle.entries()) {
+      if (entry.kind === 'file' && name.endsWith('.md')) {
+        out.push(prefix + '/' + name);
+      } else if (entry.kind === 'directory') {
+        if (name.startsWith('.') || name === 'node_modules') continue;
+        const nested = await collectMdRecursively(entry, prefix + '/' + name, depth + 1);
+        out.push(...nested);
+      }
+    }
+  } catch (e) {
+    console.warn('[redpen] subfolder enumeration failed at', prefix, e);
+  }
+  return out;
+}
+
 async function listFiles() {
   // (1) Root .md files — the round-model manuscript.
   const rootFiles = [];
   // (2) Subfolders → { folderName: [pathPrefixedFileNames] }
+  //     Each value contains every .md found at any depth inside that
+  //     top-level subfolder (e.g. manuscript/plans/foo.md is bucketed
+  //     under "manuscript", with its full relative path preserved).
   const subgroups = {};
 
   for await (const [name, entry] of directoryHandle.entries()) {
@@ -454,14 +482,7 @@ async function listFiles() {
       // Skip hidden / dotfile-style folders and common VCS / build
       // directories. They almost never contain reviewable prose.
       if (name.startsWith('.') || name === 'node_modules') continue;
-      const subFiles = [];
-      try {
-        for await (const [subName, subEntry] of entry.entries()) {
-          if (subEntry.kind === 'file' && subName.endsWith('.md')) {
-            subFiles.push(name + '/' + subName);
-          }
-        }
-      } catch (e) { /* permission, ignore */ }
+      const subFiles = await collectMdRecursively(entry, name, 1);
       if (subFiles.length) {
         subFiles.sort((a, b) => a.localeCompare(b));
         subgroups[name] = subFiles;
@@ -476,14 +497,22 @@ async function listFiles() {
   const list = document.getElementById('file-list');
   list.innerHTML = '';
 
-  // Manuscript group first, always shown so the label anchors the
-  // sidebar even when the folder has no root .md files.
-  appendFileGroup(list, 'Manuscript', rootFiles);
+  // Root label: "Manuscript" by default (back-compat with the common
+  // case where the manuscript lives at root) but switch to "Top level"
+  // when the folder actually contains a sibling `manuscript/` subfolder
+  // — otherwise the sidebar would show two identical "Manuscript"
+  // headings, one for the root group and one for the subfolder.
+  const rootLabel = ('manuscript' in subgroups) ? 'Top level' : 'Manuscript';
+  appendFileGroup(list, rootLabel, rootFiles);
 
   // Then each subfolder, alphabetically. Each gets the title-cased
-  // folder name as its group label.
+  // folder name as its group label; nested .md files show their path
+  // relative to the group prefix.
   for (const folder of Object.keys(subgroups).sort()) {
-    appendFileGroup(list, prettyGroupName(folder), subgroups[folder], { subfolder: true });
+    appendFileGroup(list, prettyGroupName(folder), subgroups[folder], {
+      subfolder: true,
+      prefix: folder,
+    });
   }
 
   renderStrandedSidebar();
@@ -499,9 +528,12 @@ function appendFileGroup(parent, label, names, opts) {
     const a = document.createElement('a');
     a.href = '#';
     a.className = 'file-link' + (opts.subfolder ? ' subfolder' : '');
-    // For subfolder files, show just the leaf — the group heading
-    // already names the folder, repeating it on each row is noise.
-    a.textContent = opts.subfolder ? name.split('/').pop() : name;
+    // For subfolder files, strip the group prefix from the display so
+    // `manuscript/plans/foo.md` shows as `plans/foo.md` under the
+    // Manuscript group (still distinguishable from `manuscript/foo.md`).
+    a.textContent = opts.subfolder
+      ? name.slice(opts.prefix.length + 1)  // +1 to drop the trailing '/'
+      : name;
     a.dataset.filename = name;
     a.title = name;
     a.onclick = (e) => { e.preventDefault(); openFile(name); };
