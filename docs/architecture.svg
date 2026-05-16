@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 620" font-family="system-ui, -apple-system, 'SF Pro Display', 'Helvetica Neue', Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#555"/>
+    </marker>
+    <marker id="arrow-warm" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#c0392b"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1100" height="620" fill="#ffffff"/>
+
+  <!-- Title -->
+  <text x="550" y="36" text-anchor="middle" font-size="22" font-weight="600" fill="#222">
+    Three layers of an LLM-assisted writing workflow
+  </text>
+  <text x="550" y="60" text-anchor="middle" font-size="14" fill="#777">
+    LLMRedPen is the reviewer's chair — the user's interface for reading, marking up, and diff-watching all three.
+  </text>
+
+  <!-- =========================================================== -->
+  <!-- USER BAR (top)                                              -->
+  <!-- =========================================================== -->
+  <rect x="60" y="92" width="980" height="80" rx="8" fill="#fef6f3" stroke="#c0392b" stroke-width="1.5"/>
+  <text x="80" y="124" font-size="17" font-weight="600" fill="#c0392b">YOU</text>
+  <text x="80" y="142" font-size="13" fill="#444">in LLMRedPen — read in paper-like view, annotate, batch-export</text>
+  <text x="80" y="160" font-size="12" fill="#777" font-style="italic">selection notes · paragraph notes · general notes · Diff across rounds</text>
+
+  <!-- Arrows from User down to each card -->
+  <g stroke="#555" stroke-width="1.6" fill="none" marker-end="url(#arrow)">
+    <line x1="200" y1="172" x2="200" y2="227"/>
+    <line x1="550" y1="172" x2="550" y2="227"/>
+    <line x1="900" y1="172" x2="900" y2="227"/>
+  </g>
+  <!-- Labels for user-side arrows -->
+  <text x="212" y="203" font-size="12" font-style="italic" fill="#555">edits (rare)</text>
+  <text x="562" y="203" font-size="12" font-style="italic" fill="#555">reviews · approves</text>
+  <text x="912" y="203" font-size="12" font-style="italic" fill="#555">annotates · Diff</text>
+
+  <!-- =========================================================== -->
+  <!-- THREE LAYER CARDS (middle)                                  -->
+  <!-- =========================================================== -->
+
+  <!-- Card 1: RULES (green-cream) -->
+  <rect x="60" y="232" width="280" height="200" rx="8" fill="#f0f4e8" stroke="#6e8a4a" stroke-width="1.5"/>
+  <text x="80" y="262" font-size="20" font-weight="700" fill="#3d4f24">RULES</text>
+  <text x="80" y="283" font-size="13" fill="#555">stable conventions</text>
+  <line x1="80" y1="292" x2="320" y2="292" stroke="#d4dbc1" stroke-width="1"/>
+  <text x="80" y="312" font-size="12" font-family="ui-monospace, 'SF Mono', Menlo, monospace" fill="#3d4f24">rules/STYLE.md</text>
+  <text x="80" y="330" font-size="12" font-family="ui-monospace, 'SF Mono', Menlo, monospace" fill="#3d4f24">rules/INTRO-OUTLINE.md</text>
+  <text x="80" y="348" font-size="12" font-family="ui-monospace, 'SF Mono', Menlo, monospace" fill="#3d4f24">rules/FEEDBACK-LEARNED.md</text>
+  <text x="80" y="366" font-size="12" font-family="ui-monospace, 'SF Mono', Menlo, monospace" fill="#3d4f24">rules/exemplars.md</text>
+  <text x="80" y="384" font-size="12" font-family="ui-monospace, 'SF Mono', Menlo, monospace" fill="#888">…</text>
+  <text x="80" y="412" font-size="12" font-style="italic" fill="#666">constraints the agent obeys</text>
+
+  <!-- Card 2: PLANS (amber - matches highlight yellow brand) -->
+  <rect x="410" y="232" width="280" height="200" rx="8" fill="#fff5d4" stroke="#b78a1f" stroke-width="1.5"/>
+  <text x="430" y="262" font-size="20" font-weight="700" fill="#6a4f00">PLANS</text>
+  <text x="430" y="283" font-size="13" fill="#555">per-subsection blueprint</text>
+  <line x1="430" y1="292" x2="670" y2="292" stroke="#e9d68a" stroke-width="1"/>
+  <text x="430" y="312" font-size="12" font-family="ui-monospace, 'SF Mono', Menlo, monospace" fill="#6a4f00">plans/§1.1-imitation-plan.md</text>
+  <text x="430" y="330" font-size="12" font-family="ui-monospace, 'SF Mono', Menlo, monospace" fill="#6a4f00">plans/§1.2-imitation-plan.md</text>
+  <text x="430" y="348" font-size="12" font-family="ui-monospace, 'SF Mono', Menlo, monospace" fill="#6a4f00">plans/§1.3-imitation-plan.md</text>
+  <text x="430" y="366" font-size="12" font-family="ui-monospace, 'SF Mono', Menlo, monospace" fill="#888">…</text>
+  <text x="430" y="412" font-size="12" font-style="italic" fill="#666">review gate — no prose until approved</text>
+
+  <!-- Card 3: MANUSCRIPT (warm red-cream) -->
+  <rect x="760" y="232" width="280" height="200" rx="8" fill="#fceee8" stroke="#a85c3a" stroke-width="1.5"/>
+  <text x="780" y="262" font-size="20" font-weight="700" fill="#6b3520">MANUSCRIPT</text>
+  <text x="780" y="283" font-size="13" fill="#555">the draft itself</text>
+  <line x1="780" y1="292" x2="1020" y2="292" stroke="#ecc9b9" stroke-width="1"/>
+  <text x="780" y="312" font-size="12" font-family="ui-monospace, 'SF Mono', Menlo, monospace" fill="#6b3520">introduction-draft.md</text>
+  <text x="780" y="334" font-size="12" fill="#444">with <tspan font-family="ui-monospace, monospace" fill="#6b3520">**Self-review notes**</tspan></text>
+  <text x="780" y="352" font-size="12" fill="#444">+ <tspan font-family="ui-monospace, monospace" fill="#6b3520">&lt;!-- §1.x changelog --&gt;</tspan></text>
+  <text x="780" y="412" font-size="12" font-style="italic" fill="#666">diff + self-review across rounds</text>
+
+  <!-- Arrows from Agent up to each card -->
+  <g stroke="#555" stroke-width="1.6" fill="none" marker-end="url(#arrow)">
+    <line x1="200" y1="492" x2="200" y2="437"/>
+    <line x1="550" y1="492" x2="550" y2="437"/>
+    <line x1="900" y1="492" x2="900" y2="437"/>
+  </g>
+  <!-- Labels for agent-side arrows -->
+  <text x="212" y="466" font-size="12" font-style="italic" fill="#555">reads</text>
+  <text x="562" y="466" font-size="12" font-style="italic" fill="#555">drafts plan · revises</text>
+  <text x="912" y="466" font-size="12" font-style="italic" fill="#555">emits prose · self-reviews</text>
+
+  <!-- =========================================================== -->
+  <!-- AGENT BAR (bottom)                                          -->
+  <!-- =========================================================== -->
+  <rect x="60" y="492" width="980" height="80" rx="8" fill="#f4f4f4" stroke="#777" stroke-width="1.5"/>
+  <text x="80" y="524" font-size="17" font-weight="600" fill="#333">WRITING AGENT</text>
+  <text x="80" y="542" font-size="13" fill="#444">reads rules · drafts plan · awaits approval · transplants approved plan into prose · attaches self-review notes</text>
+  <text x="80" y="560" font-size="12" fill="#777" font-style="italic">Patch 5 v2 workflow: verbatim copy + sentence-level diff per subsection</text>
+
+  <!-- Footnote: round loop hint -->
+  <text x="550" y="600" text-anchor="middle" font-size="12" font-style="italic" fill="#888">
+    The loop: rules constrain the agent → agent drafts plan → you approve → agent emits manuscript → you Diff &amp; annotate → next round.
+  </text>
+</svg>

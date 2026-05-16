@@ -9,13 +9,14 @@ The aim is to bring the rhythm of paper review — careful reading, red-pen
 margins, handover to the author, look at the revision, repeat — into
 LLM-assisted writing, without turning the user into a full-time editor.
 
-![LLMRedPen — reading and annotating an LLM-written manuscript draft](docs/screenshots/hero.png)
+![Three-layer architecture: Rules — Plans — Manuscript, mediated by LLMRedPen above and the writing agent below](docs/architecture.svg)
 
 ---
 
 ## Table of contents
 
 - [Why this tool exists](#why-this-tool-exists)
+- [The three-layer architecture](#the-three-layer-architecture)
 - [Screenshots](#screenshots)
 - [The review workflow](#the-review-workflow)
 - [Folder layout the viewer expects](#folder-layout-the-viewer-expects)
@@ -78,7 +79,120 @@ wrote.
 
 ---
 
+## The three-layer architecture
+
+The viewer is built around how an LLM-assisted writing project actually
+grows. There are three kinds of files involved, each playing a distinct
+role in the loop (see the diagram at the top of this README):
+
+### Rules — the constraints the agent obeys
+
+Stable conventions that don't change per cycle. The agent reads them
+on every turn as constraints; the user maintains them by hand. They
+live under `rules/`:
+
+- `STYLE.md` — banned phrases, register guidance, prose-level rules
+- `INTRO-OUTLINE.md` — section-by-section structural spec
+- `FEEDBACK-LEARNED.md` — running list of past mistakes the agent
+  should avoid repeating
+- `exemplars.md` — annotated reference passages the plan layer will
+  imitate
+- `literature-classification.md`, `paper-spec.md`, … — whatever else
+  is project-wide
+
+`CLAUDE.md` at the project root is also a rules file, special-cased
+because the viewer can edit it in place via the rules editor (other
+rules files are read-only from the viewer; you edit them in your
+normal Markdown editor).
+
+### Plans — the review gate before any prose is written
+
+For each subsection the agent is about to draft, it **first** produces
+a 4-part *imitation plan* and writes it to
+`plans/§N.x-imitation-plan.md`:
+
+1. **Target.** Which exemplar paragraph from `rules/exemplars.md` this
+   subsection is modelled after.
+2. **Verbatim copy.** The source paragraph quoted in full,
+   sentence-by-sentence (`s1`, `s2`, …).
+3. **Sentence-level diff.** For each source sentence: *transplant*
+   (keep, with substitutions listed), *drop* (remove, with reason),
+   or *new* (propose a sentence the source doesn't have — requires
+   explicit author approval).
+4. **Resulting draft.** The prose that would go into the manuscript
+   if you approved as-is.
+
+You review the plan in LLMRedPen, annotate where needed, and either
+approve or send the agent feedback. Only after approval does the
+agent commit prose to the manuscript. **This is the choke point.** It
+catches fabrication BEFORE it lands in the draft, instead of after.
+
+### Manuscript — the draft itself, with author-facing self-review
+
+The actual prose, plus the agent's per-subsection self-review notes
+(audited against the rules) and a small changelog HTML comment. Each
+subsection follows this shape:
+
+````md
+### <descriptive title>
+
+<prose paragraph(s) with @key citations>
+
+**Self-review notes (C2.4 internal critic pass — surface to author):**
+
+- **Qualifiers (fl-001).** ...
+- **Causal connectors (fl-010).** ...
+- ...
+
+<!-- §N.x status: Draft N produced YYYY-MM-DD ... -->
+````
+
+When you open a manuscript file in LLMRedPen, the *Diff* tab shows
+what changed since the previous round AND surfaces the agent's
+self-review notes as a collapsible panel at the top. The reading view
+automatically hides the self-review block + the changelog comment so
+the prose flows uninterrupted (toggle *Show metadata* to see them).
+
+### How the loop runs
+
+```
+1. You: "Draft §1.3 about X" (intent into the agent's chat).
+
+2. Agent reads rules/ → drafts the imitation plan → writes it to
+   plans/§1.3-imitation-plan.md → tells you it's ready.
+
+3. You open the plan in LLMRedPen, read it, annotate or approve.
+
+4. If you annotated: export the comments → agent → back to step 2.
+   If you approved: the agent transplants the plan into the
+   manuscript and attaches its self-review block.
+
+5. You open the manuscript in LLMRedPen, click "Proceed to the next
+   round" (or use Reload), then read the Diff tab — agent's
+   self-review on top, textual diff below.
+
+6. You annotate the manuscript, export, agent revises. When this
+   subsection is good, you move to the next one and the cycle
+   restarts at step 1.
+```
+
+The three layers aren't a strict pipeline — you'll bounce between
+them. But the typical flow is: **rules stable** → **plan approved
+then locked** → **manuscript iterated round by round**. The tool's
+job is to make reviewing each layer feel like reviewing a paper, not
+like scrolling through chat history.
+
+---
+
 ## Screenshots
+
+**The reading view**
+
+A typical session: file picker + manuscript group on the left, the
+rendered draft in the centre with `§S ¶N` paragraph markers in the
+margin, comments stacked on the right.
+
+![LLMRedPen — reading and annotating an LLM-written manuscript draft](docs/screenshots/hero.png)
 
 <table>
 <tr>
