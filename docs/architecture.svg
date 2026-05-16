@@ -46,9 +46,9 @@
   <line x1="42" y1="200" x2="218" y2="200" stroke="#f0d4cc" stroke-width="1"/>
 
   <!-- Role labels (right-aligned, aligned with each card's vertical centre) -->
-  <text x="215" y="265" text-anchor="end" font-size="15" font-style="italic" fill="#555">maintain (rare)</text>
-  <text x="215" y="425" text-anchor="end" font-size="15" font-style="italic" fill="#555">review · approve</text>
-  <text x="215" y="585" text-anchor="end" font-size="15" font-style="italic" fill="#555">annotate · diff</text>
+  <text x="215" y="265" text-anchor="end" font-size="18" font-style="italic" fill="#333">maintain (rare)</text>
+  <text x="215" y="425" text-anchor="end" font-size="18" font-style="italic" fill="#333">review · approve</text>
+  <text x="215" y="585" text-anchor="end" font-size="18" font-style="italic" fill="#333">annotate · diff</text>
 
   <!-- Arrows from left panel labels into the cards -->
   <line x1="232" y1="260" x2="278" y2="260" stroke="#555" stroke-width="1.5" marker-end="url(#arrow-small)"/>
@@ -77,9 +77,9 @@
   <line x1="882" y1="200" x2="1058" y2="200" stroke="#ddd" stroke-width="1"/>
 
   <!-- Role labels (left-aligned, aligned with each card's vertical centre) -->
-  <text x="885" y="265" text-anchor="start" font-size="15" font-style="italic" fill="#555">consult</text>
-  <text x="885" y="425" text-anchor="start" font-size="15" font-style="italic" fill="#555">draft · revise</text>
-  <text x="885" y="585" text-anchor="start" font-size="15" font-style="italic" fill="#555">emit · self-review</text>
+  <text x="885" y="265" text-anchor="start" font-size="18" font-style="italic" fill="#333">consult</text>
+  <text x="885" y="425" text-anchor="start" font-size="18" font-style="italic" fill="#333">draft · revise</text>
+  <text x="885" y="585" text-anchor="start" font-size="18" font-style="italic" fill="#333">emit · self-review</text>
 
   <!-- Arrows from right panel labels into the cards -->
   <line x1="868" y1="260" x2="822" y2="260" stroke="#555" stroke-width="1.5" marker-end="url(#arrow-small)"/>
