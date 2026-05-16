@@ -82,8 +82,19 @@ wrote.
 ## The three-layer architecture
 
 The viewer is built around how an LLM-assisted writing project actually
-grows. There are three kinds of files involved, each playing a distinct
-role in the loop (see the diagram at the top of this README):
+grows. The three layers are **not equals** — they form a pipeline
+(see the diagram at the top of this README):
+
+- **Rules** sit *above* everything as the standing constraints. The
+  agent consults them on every turn; the user maintains them by
+  hand and only updates them rarely.
+- **Plans** sit *between* intent and prose. For each subsection, the
+  agent first drafts a plan and the user must approve it before any
+  prose is committed. This is the gate.
+- **Manuscript** is the *output*. Prose lands here only after a plan
+  is approved, then iterates round by round.
+
+Each layer in detail:
 
 ### Rules — the constraints the agent obeys
 

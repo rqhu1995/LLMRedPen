@@ -1,71 +1,81 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 460" font-family="system-ui, -apple-system, 'SF Pro Display', 'Helvetica Neue', Helvetica, Arial, sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 620" font-family="system-ui, -apple-system, 'SF Pro Display', 'Helvetica Neue', Helvetica, Arial, sans-serif">
   <defs>
     <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
       <path d="M0,0 L10,5 L0,10 z" fill="#555"/>
     </marker>
   </defs>
 
-  <rect width="1100" height="460" fill="#ffffff"/>
+  <rect width="1100" height="620" fill="#ffffff"/>
 
-  <!-- Title -->
-  <text x="550" y="34" text-anchor="middle" font-size="22" font-weight="600" fill="#222">
-    Three layers, one workflow
+  <!-- Title + subtitle -->
+  <text x="550" y="36" text-anchor="middle" font-size="22" font-weight="600" fill="#222">
+    Three layers, one pipeline
   </text>
-  <text x="550" y="58" text-anchor="middle" font-size="14" fill="#777">
-    Rules constrain the agent · Plans gate the prose · Manuscript carries the draft
+  <text x="550" y="60" text-anchor="middle" font-size="14" fill="#777">
+    Rules constrain everything below · Plans gate the prose · Manuscript carries the draft
+  </text>
+
+  <!-- Column headers -->
+  <text x="290" y="102" text-anchor="end" font-size="14" font-weight="600" fill="#c0392b" letter-spacing="0.04em">
+    YOU — in LLMRedPen
+  </text>
+  <text x="810" y="102" text-anchor="start" font-size="14" font-weight="600" fill="#444" letter-spacing="0.04em">
+    WRITING AGENT
   </text>
 
   <!-- =========================================================== -->
-  <!-- USER BAR (top)                                              -->
+  <!-- Layer 1: RULES (top — the standing constraints)             -->
   <!-- =========================================================== -->
-  <rect x="40" y="86" width="1020" height="64" rx="8" fill="#fef6f3" stroke="#c0392b" stroke-width="1.5"/>
-  <text x="60" y="118" font-size="18" font-weight="600" fill="#c0392b">YOU</text>
-  <text x="60" y="138" font-size="14" fill="#444">in LLMRedPen — read in a paper-like view, mark up, diff across rounds</text>
+  <rect x="320" y="130" width="460" height="100" rx="10" fill="#f0f4e8" stroke="#6e8a4a" stroke-width="1.5"/>
+  <text x="550" y="172" text-anchor="middle" font-size="30" font-weight="700" fill="#3d4f24">RULES</text>
+  <text x="550" y="200" text-anchor="middle" font-size="14" font-style="italic" fill="#555">project-wide constraints, stable across cycles</text>
 
-  <!-- Arrows from User down to each card -->
-  <g stroke="#555" stroke-width="1.8" fill="none" marker-end="url(#arrow)">
-    <line x1="180" y1="156" x2="180" y2="195"/>
-    <line x1="550" y1="156" x2="550" y2="195"/>
-    <line x1="920" y1="156" x2="920" y2="195"/>
-  </g>
-  <text x="195" y="180" font-size="13" font-style="italic" fill="#555">edit</text>
-  <text x="565" y="180" font-size="13" font-style="italic" fill="#555">review · approve</text>
-  <text x="935" y="180" font-size="13" font-style="italic" fill="#555">annotate · diff</text>
+  <!-- User-side role for RULES -->
+  <text x="290" y="184" text-anchor="end" font-size="13" font-style="italic" fill="#555">maintain (rare)</text>
+  <line x1="300" y1="180" x2="320" y2="180" stroke="#555" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <!-- Agent-side role for RULES -->
+  <line x1="800" y1="180" x2="780" y2="180" stroke="#555" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="810" y="184" text-anchor="start" font-size="13" font-style="italic" fill="#555">consult</text>
 
-  <!-- =========================================================== -->
-  <!-- THREE LAYER CARDS (middle)                                  -->
-  <!-- =========================================================== -->
-
-  <!-- Card 1: RULES -->
-  <rect x="40" y="200" width="280" height="120" rx="10" fill="#f0f4e8" stroke="#6e8a4a" stroke-width="1.5"/>
-  <text x="180" y="248" text-anchor="middle" font-size="30" font-weight="700" fill="#3d4f24">RULES</text>
-  <text x="180" y="284" text-anchor="middle" font-size="14" font-style="italic" fill="#555">the constraints the agent obeys</text>
-
-  <!-- Card 2: PLANS -->
-  <rect x="410" y="200" width="280" height="120" rx="10" fill="#fff5d4" stroke="#b78a1f" stroke-width="1.5"/>
-  <text x="550" y="248" text-anchor="middle" font-size="30" font-weight="700" fill="#6a4f00">PLANS</text>
-  <text x="550" y="284" text-anchor="middle" font-size="14" font-style="italic" fill="#555">the review gate before any prose</text>
-
-  <!-- Card 3: MANUSCRIPT -->
-  <rect x="780" y="200" width="280" height="120" rx="10" fill="#fceee8" stroke="#a85c3a" stroke-width="1.5"/>
-  <text x="920" y="248" text-anchor="middle" font-size="30" font-weight="700" fill="#6b3520">MANUSCRIPT</text>
-  <text x="920" y="284" text-anchor="middle" font-size="14" font-style="italic" fill="#555">the draft itself + self-review</text>
-
-  <!-- Arrows from Agent up to each card -->
-  <g stroke="#555" stroke-width="1.8" fill="none" marker-end="url(#arrow)">
-    <line x1="180" y1="370" x2="180" y2="325"/>
-    <line x1="550" y1="370" x2="550" y2="325"/>
-    <line x1="920" y1="370" x2="920" y2="325"/>
-  </g>
-  <text x="195" y="352" font-size="13" font-style="italic" fill="#555">read</text>
-  <text x="565" y="352" font-size="13" font-style="italic" fill="#555">draft · revise</text>
-  <text x="935" y="352" font-size="13" font-style="italic" fill="#555">emit · self-review</text>
+  <!-- Arrow + label down to PLANS -->
+  <line x1="550" y1="240" x2="550" y2="295" stroke="#555" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="566" y="272" text-anchor="start" font-size="13" font-style="italic" fill="#555">constrain</text>
 
   <!-- =========================================================== -->
-  <!-- AGENT BAR (bottom)                                          -->
+  <!-- Layer 2: PLANS (middle — the gate)                          -->
   <!-- =========================================================== -->
-  <rect x="40" y="376" width="1020" height="64" rx="8" fill="#f4f4f4" stroke="#777" stroke-width="1.5"/>
-  <text x="60" y="408" font-size="18" font-weight="600" fill="#333">WRITING AGENT</text>
-  <text x="60" y="428" font-size="14" fill="#444">drafts plan first · awaits approval · emits prose only after the gate opens</text>
+  <rect x="320" y="300" width="460" height="100" rx="10" fill="#fff5d4" stroke="#b78a1f" stroke-width="1.5"/>
+  <text x="550" y="342" text-anchor="middle" font-size="30" font-weight="700" fill="#6a4f00">PLANS</text>
+  <text x="550" y="370" text-anchor="middle" font-size="14" font-style="italic" fill="#555">per-subsection blueprint — review gate before any prose</text>
+
+  <!-- User-side role for PLANS -->
+  <text x="290" y="354" text-anchor="end" font-size="13" font-style="italic" fill="#555">review · approve</text>
+  <line x1="300" y1="350" x2="320" y2="350" stroke="#555" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <!-- Agent-side role for PLANS -->
+  <line x1="800" y1="350" x2="780" y2="350" stroke="#555" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="810" y="354" text-anchor="start" font-size="13" font-style="italic" fill="#555">draft · revise</text>
+
+  <!-- Arrow + label down to MANUSCRIPT -->
+  <line x1="550" y1="410" x2="550" y2="465" stroke="#555" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="566" y="442" text-anchor="start" font-size="13" font-style="italic" fill="#555">approved → prose emits</text>
+
+  <!-- =========================================================== -->
+  <!-- Layer 3: MANUSCRIPT (bottom — the draft)                    -->
+  <!-- =========================================================== -->
+  <rect x="320" y="470" width="460" height="100" rx="10" fill="#fceee8" stroke="#a85c3a" stroke-width="1.5"/>
+  <text x="550" y="512" text-anchor="middle" font-size="30" font-weight="700" fill="#6b3520">MANUSCRIPT</text>
+  <text x="550" y="540" text-anchor="middle" font-size="14" font-style="italic" fill="#555">the draft itself, with self-review per subsection</text>
+
+  <!-- User-side role for MANUSCRIPT -->
+  <text x="290" y="524" text-anchor="end" font-size="13" font-style="italic" fill="#555">annotate · diff</text>
+  <line x1="300" y1="520" x2="320" y2="520" stroke="#555" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <!-- Agent-side role for MANUSCRIPT -->
+  <line x1="800" y1="520" x2="780" y2="520" stroke="#555" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="810" y="524" text-anchor="start" font-size="13" font-style="italic" fill="#555">emit · self-review</text>
+
+  <!-- Footer: round-loop hint -->
+  <text x="550" y="600" text-anchor="middle" font-size="12" font-style="italic" fill="#888">
+    One full round = approve a plan → manuscript updates → you diff &amp; annotate → next subsection.
+  </text>
 </svg>
