@@ -421,47 +421,70 @@ async function applyFolder(handle) {
   }
 }
 
-// Plan files (per the Patch 5 v2 author workflow) live under a
-// optional `plans/` subdirectory. The viewer treats them as second-class:
-// annotatable + reloadable, but not part of the round model. Storage keys
-// use the relative path (e.g. "plans/§1.1-imitation-plan.md") so they
-// don't collide with same-named root files.
-const PLAN_PREFIX = 'plans/';
-function isPlanFile(name) { return typeof name === 'string' && name.startsWith(PLAN_PREFIX); }
+// Any .md file under an immediate subdirectory (one level deep) gets
+// half-treatment: annotatable + reloadable, but no round model (no
+// Prev/Diff tabs, no Proceed button). Root .md files keep full round
+// support. Storage keys carry the relative path (e.g.
+// "plans/§1.1-imitation-plan.md") so files with the same leaf name
+// across folders don't collide.
+function isSubfolderFile(name) { return typeof name === 'string' && name.includes('/'); }
+// Back-compat alias — older helpers (and the writing-agent docs) still
+// reach for isPlanFile. Same semantics now that every subfolder is
+// "half-treatment".
+function isPlanFile(name) { return isSubfolderFile(name); }
+
+function prettyGroupName(slug) {
+  // "self-review" → "Self-review", "rules" → "Rules", "plans" → "Plans".
+  // Just title-case the first letter; preserve hyphens / underscores so
+  // the user's folder name reads back unchanged.
+  if (!slug) return slug;
+  return slug.charAt(0).toUpperCase() + slug.slice(1);
+}
 
 async function listFiles() {
-  // (1) Root .md files — the manuscript.
+  // (1) Root .md files — the round-model manuscript.
   const rootFiles = [];
+  // (2) Subfolders → { folderName: [pathPrefixedFileNames] }
+  const subgroups = {};
+
   for await (const [name, entry] of directoryHandle.entries()) {
-    if (entry.kind === 'file' && name.endsWith('.md')) rootFiles.push(name);
+    if (entry.kind === 'file' && name.endsWith('.md')) {
+      rootFiles.push(name);
+    } else if (entry.kind === 'directory') {
+      // Skip hidden / dotfile-style folders and common VCS / build
+      // directories. They almost never contain reviewable prose.
+      if (name.startsWith('.') || name === 'node_modules') continue;
+      const subFiles = [];
+      try {
+        for await (const [subName, subEntry] of entry.entries()) {
+          if (subEntry.kind === 'file' && subName.endsWith('.md')) {
+            subFiles.push(name + '/' + subName);
+          }
+        }
+      } catch (e) { /* permission, ignore */ }
+      if (subFiles.length) {
+        subFiles.sort((a, b) => a.localeCompare(b));
+        subgroups[name] = subFiles;
+      }
+    }
   }
   rootFiles.sort((a, b) => a.localeCompare(b));
 
-  // (2) plans/*.md if the subfolder exists. getDirectoryHandle throws if
-  // the folder isn't there; that's just "user hasn't started using plans
-  // yet", not an error.
-  const planFiles = [];
-  try {
-    const plansHandle = await directoryHandle.getDirectoryHandle(PLAN_PREFIX.replace(/\/$/, ''));
-    for await (const [name, entry] of plansHandle.entries()) {
-      if (entry.kind === 'file' && name.endsWith('.md')) {
-        planFiles.push(PLAN_PREFIX + name);
-      }
-    }
-    planFiles.sort((a, b) => a.localeCompare(b));
-  } catch (e) { /* plans/ absent, fine */ }
-
-  folderFileNames = rootFiles.concat(planFiles);
+  // Flat list used by stranded-rename detection + folder-file lookups.
+  folderFileNames = rootFiles.concat(...Object.values(subgroups));
 
   const list = document.getElementById('file-list');
   list.innerHTML = '';
 
-  // Manuscript group — always shown so the section label is consistent
-  // even when the folder is empty (the rendered group falls back to a
-  // blank list, which still beats "where did the section go").
+  // Manuscript group first, always shown so the label anchors the
+  // sidebar even when the folder has no root .md files.
   appendFileGroup(list, 'Manuscript', rootFiles);
-  // Plans group — only when at least one plan file exists.
-  if (planFiles.length) appendFileGroup(list, 'Plans', planFiles, { plan: true });
+
+  // Then each subfolder, alphabetically. Each gets the title-cased
+  // folder name as its group label.
+  for (const folder of Object.keys(subgroups).sort()) {
+    appendFileGroup(list, prettyGroupName(folder), subgroups[folder], { subfolder: true });
+  }
 
   renderStrandedSidebar();
 }
@@ -475,10 +498,10 @@ function appendFileGroup(parent, label, names, opts) {
   for (const name of names) {
     const a = document.createElement('a');
     a.href = '#';
-    a.className = 'file-link' + (opts.plan ? ' plan' : '');
-    // Show just the leaf for plan entries (the group label says "Plans"
-    // already; showing "plans/foo.md" would be redundant).
-    a.textContent = opts.plan ? name.slice(PLAN_PREFIX.length) : name;
+    a.className = 'file-link' + (opts.subfolder ? ' subfolder' : '');
+    // For subfolder files, show just the leaf — the group heading
+    // already names the folder, repeating it on each row is noise.
+    a.textContent = opts.subfolder ? name.split('/').pop() : name;
     a.dataset.filename = name;
     a.title = name;
     a.onclick = (e) => { e.preventDefault(); openFile(name); };
@@ -605,15 +628,17 @@ function migrateBucket(from, to) {
 
 // ============================== File rendering =======================
 
-// Resolve a possibly-prefixed file name ("foo.md" or "plans/foo.md") to
-// the matching FileSystemFileHandle, walking through the subdirectory
-// handle when needed.
+// Resolve a possibly-prefixed file name ("foo.md", "plans/foo.md",
+// "rules/section/foo.md") to the matching FileSystemFileHandle. Walks
+// each path segment as a directory handle in turn.
 async function resolveFileHandle(name) {
-  if (isPlanFile(name)) {
-    const plansHandle = await directoryHandle.getDirectoryHandle(PLAN_PREFIX.replace(/\/$/, ''));
-    return plansHandle.getFileHandle(name.slice(PLAN_PREFIX.length));
+  const parts = name.split('/');
+  const leaf = parts.pop();
+  let h = directoryHandle;
+  for (const part of parts) {
+    h = await h.getDirectoryHandle(part);
   }
-  return directoryHandle.getFileHandle(name);
+  return h.getFileHandle(leaf);
 }
 
 async function openFile(name) {

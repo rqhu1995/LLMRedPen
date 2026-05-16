@@ -250,14 +250,16 @@ comments so the next time you reopen, the *Diff* tab shows exactly
 what changed and the *Prev* tab shows what you sent. New comments go
 on the new file; the previous round stays read-only as a record.
 
-If your writing agent produces intermediate plan files (e.g. a
-per-subsection imitation plan it wants you to approve before it
-touches the manuscript), put them under a `plans/` subfolder. The
-viewer lists them in a separate *Plans* group in the sidebar; they're
-annotatable + reloadable but don't participate in the round model.
-A one-time *workflow setup* prompt for the agent — including the
-plans/ convention and the formatting constraints the viewer's
-reading-view stripper expects — lives at
+Organize side material into subfolders — `plans/` for writing-agent
+intermediate plans, `rules/` for style guides and spec files,
+`self-review/` for audit notes, anything else you want grouped. Each
+immediate subfolder becomes its own labelled group in the sidebar.
+Root `.md` files get the full round model (*Prev* / *Diff* /
+*Current* + *Proceed*); subfolder files are annotatable + reloadable
+but stay out of the round loop (no Prev/Diff, no Proceed). A one-time
+*workflow setup* prompt for the writing agent — including the `plans/`
+convention and the formatting constraints the viewer's reading-view
+stripper expects — lives at
 [`docs/agent-workflow.md`](docs/agent-workflow.md).
 
 ---
