@@ -186,6 +186,15 @@
     <div class="tt-body"></div>
   </div>
 
+  <!-- Floating tooltip for rule cross-references (fl-NNN, B3.1, §1.x,
+       Exemplar N). Populated from the rules index when the user hovers
+       any .rule-ref in the rendered article. Click → openFile + scroll. -->
+  <div id="rule-tooltip" hidden>
+    <div class="rt-source"></div>
+    <div class="rt-heading"></div>
+    <div class="rt-body"></div>
+  </div>
+
   <!-- Visual table editor. Opened on top of the inline editor when the
        user clicks the toolbar `table` button. Edits an existing markdown
        table at the cursor, or inserts a new one if there isn't one. -->

@@ -1703,3 +1703,82 @@ table.te-grid td.te-axis button:hover {
   white-space: pre-wrap;
   word-wrap: break-word;
 }
+
+/* === Rule cross-references ===
+   Wrapped IDs in body prose (fl-001, B3.1, §1.x, Exemplar N). Subtle
+   chip-style underline so the page doesn't turn into a sea of links;
+   hover/focus brings them forward. */
+.rule-ref {
+  color: var(--accent, #c0392b);
+  text-decoration: none;
+  background: rgba(192, 57, 43, 0.06);
+  padding: 0 4px;
+  border-radius: 3px;
+  border-bottom: 1px dashed rgba(192, 57, 43, 0.5);
+  cursor: pointer;
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 0.92em;
+  white-space: nowrap;
+  transition: background 0.12s, border-color 0.12s;
+}
+.rule-ref:hover,
+.rule-ref:focus {
+  background: rgba(192, 57, 43, 0.14);
+  border-bottom-color: var(--accent, #c0392b);
+  outline: none;
+}
+
+/* Rule-source tooltip: lighter visual than the annotation tooltip
+   (this content is informational, not a quote of the user's own
+   writing — different role, different palette). */
+#rule-tooltip {
+  position: absolute;
+  z-index: 600;
+  max-width: 480px;
+  background: #ffffff;
+  border: 1px solid #d4cfc5;
+  border-radius: 6px;
+  padding: 12px 14px;
+  font-family: var(--sans);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.16);
+  pointer-events: none;
+}
+
+#rule-tooltip .rt-source {
+  font-size: 11px;
+  color: var(--fg-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 6px;
+}
+
+#rule-tooltip .rt-heading {
+  font-family: var(--serif);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--fg);
+  margin-bottom: 8px;
+  line-height: 1.4;
+}
+
+#rule-tooltip .rt-body {
+  font-family: var(--serif);
+  font-size: 13px;
+  color: var(--fg);
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  max-height: 280px;
+  overflow-y: hidden;
+}
+
+/* Flash a jumped-to heading so the user can find the destination
+   after click-to-source navigates them to a long file. */
+@keyframes rule-jump-flash {
+  0%   { background: rgba(192, 57, 43, 0.22); }
+  100% { background: transparent; }
+}
+.rule-jump-flash {
+  animation: rule-jump-flash 1.4s ease-out;
+  border-radius: 4px;
+}

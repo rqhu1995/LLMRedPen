@@ -35,6 +35,12 @@ let activeTab = 'current';
 // §S ¶N numbering. Toggle persisted globally (not per-folder) since it's
 // a personal reading preference.
 let showMetadata = false;
+
+// Index of rule IDs the reader can hover/click in plans + manuscript prose.
+// Populated from `rules/` (recursive) + root `CLAUDE.md` after the folder
+// is opened. Shape: Map<normalizedId, { file, heading, snippet }>.
+// See buildRulesIndex / wrapRuleReferences.
+let rulesIndex = new Map();
 let mdParser = null;          // markdown-it instance
 let activeSelection = null;   // { text, anchor, contextBefore, contextAfter, charOffset }
 let rulesData = null;         // { handle, text, sections } while rules editor is open
@@ -130,6 +136,7 @@ async function init() {
   loadShowMetadata();
   updateMetadataToggleLabel();
   bindUIEvents();
+  bindRuleRefHandlers();  // document-level — safe to bind before any folder is open
   await offerRestore();
 }
 
@@ -333,6 +340,289 @@ function updateMetadataToggleLabel() {
   btn.setAttribute('aria-pressed', showMetadata ? 'true' : 'false');
 }
 
+// =================== Rules cross-reference ===========================
+//
+// Plans and manuscript prose constantly cite rule IDs — fl-001, B3.1,
+// §1.3, Exemplar 2 — defined elsewhere in the project. Looking each one
+// up in the source file kills the reading flow. We build a lightweight
+// index of every recognisable ID once at folder-open time, then wrap
+// every match in the rendered article as a hoverable <a.rule-ref>.
+// Hover → tooltip with the heading + body snippet. Click → switch to
+// the source file and scroll to that heading.
+//
+// Matching is exact (with one normalisation: fl-N → fl-NNN zero-pad).
+// No fuzzy partial matching in this version — if an ID isn't in the
+// index, the text is left untouched.
+
+// Patterns we recognise inside body prose, ordered: more specific first.
+const RULE_ID_PATTERNS = [
+  { re: /\bfl-\d{1,3}\b/g,                  kind: 'fl' },
+  { re: /§\d+(?:\.\d+)+/g,                  kind: 'section' },
+  { re: /\bExemplar\s+\d+\b/g,              kind: 'exemplar' },
+  { re: /\b[A-D]\d+(?:\.\d+)*\b/g,          kind: 'claude' },  // A1, B3.1, C2.4, D5
+];
+
+function normalizeRuleId(raw, kind) {
+  if (kind === 'fl') {
+    const m = raw.match(/^fl-(\d+)$/);
+    return m ? 'fl-' + m[1].padStart(3, '0') : raw;
+  }
+  if (kind === 'exemplar') {
+    return raw.replace(/\s+/g, ' ');  // "Exemplar 1"
+  }
+  return raw;
+}
+
+// Patterns we recognise *in heading text* of rules files, to harvest
+// the IDs that index the body content following each heading. Returns
+// the array of all IDs the heading carries (a heading may have more
+// than one, e.g. "### §1.3 — Broken bikes (B3.1 applies)").
+function harvestHeadingIds(headingText) {
+  const ids = [];
+  for (const { re, kind } of RULE_ID_PATTERNS) {
+    re.lastIndex = 0;
+    let m;
+    while ((m = re.exec(headingText))) {
+      ids.push(normalizeRuleId(m[0], kind));
+    }
+  }
+  // De-dupe while preserving order.
+  return [...new Set(ids)];
+}
+
+// Walk every rules-bearing .md file under the open folder, parse headings,
+// snapshot the body that follows each heading as a snippet. Idempotent;
+// safe to call again on reload.
+async function buildRulesIndex() {
+  rulesIndex = new Map();
+  if (!directoryHandle) return;
+
+  // Candidate files: CLAUDE.md at root + everything under rules/ recursively.
+  const candidates = [];
+  try {
+    await directoryHandle.getFileHandle('CLAUDE.md');
+    candidates.push('CLAUDE.md');
+  } catch (e) { /* CLAUDE.md absent, fine */ }
+  try {
+    const rulesHandle = await directoryHandle.getDirectoryHandle('rules');
+    const found = await collectMdRecursively(rulesHandle, 'rules', 1);
+    candidates.push(...found);
+  } catch (e) { /* rules/ absent, fine */ }
+
+  for (const path of candidates) {
+    try {
+      const handle = await resolveFileHandle(path);
+      const file = await handle.getFile();
+      const text = await file.text();
+      indexHeadings(text, path);
+    } catch (e) {
+      console.warn('[redpen] rules-index read failed for', path, e);
+    }
+  }
+}
+
+function indexHeadings(text, file) {
+  const lines = text.split('\n');
+  let current = null;  // { heading, ids, bodyLines }
+  const flush = () => {
+    if (!current || !current.ids.length) return;
+    // First ~5 non-empty body lines, capped at ~500 chars for the snippet.
+    const snippetLines = [];
+    let chars = 0;
+    for (const line of current.bodyLines) {
+      if (!line.trim()) {
+        if (snippetLines.length) snippetLines.push(line);
+        continue;
+      }
+      snippetLines.push(line);
+      chars += line.length;
+      if (snippetLines.filter(l => l.trim()).length >= 6 || chars > 500) break;
+    }
+    const snippet = snippetLines.join('\n').trim();
+    for (const id of current.ids) {
+      // First definition wins. If the same ID appears in two files,
+      // we keep the earliest enumerated source — predictable enough.
+      if (!rulesIndex.has(id)) {
+        rulesIndex.set(id, { file, heading: current.heading, snippet });
+      }
+    }
+  };
+
+  for (const line of lines) {
+    const h = line.match(/^(#{1,6})\s+(.+?)\s*$/);
+    if (h) {
+      flush();
+      current = { heading: h[2], ids: harvestHeadingIds(h[2]), bodyLines: [] };
+    } else if (current) {
+      current.bodyLines.push(line);
+    }
+  }
+  flush();
+}
+
+// Walk the rendered article's text nodes; wrap every recognised rule
+// reference in <a.rule-ref data-ref-key="...">. Skips nodes inside
+// code, pre, existing links, and annotation marks so we don't double-
+// wrap or break copy/paste of code samples.
+const WRAP_SKIP_TAGS = new Set(['CODE', 'PRE', 'A', 'MARK', 'SCRIPT', 'STYLE']);
+
+function wrapRuleReferences(rootEl) {
+  if (!rootEl || !rulesIndex.size) return;
+
+  const walker = document.createTreeWalker(rootEl, NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      let p = node.parentNode;
+      while (p && p !== rootEl) {
+        if (WRAP_SKIP_TAGS.has(p.tagName)) return NodeFilter.FILTER_REJECT;
+        p = p.parentNode;
+      }
+      return NodeFilter.FILTER_ACCEPT;
+    },
+  });
+
+  const targets = [];
+  let n;
+  while ((n = walker.nextNode())) targets.push(n);
+
+  for (const textNode of targets) {
+    const text = textNode.textContent;
+    // Quick reject: no plausible ID character → skip cheap.
+    if (!/(fl-|§|Exemplar|[A-D]\d)/.test(text)) continue;
+
+    // Collect every match across all patterns, dedupe by position.
+    const hits = [];
+    for (const { re, kind } of RULE_ID_PATTERNS) {
+      re.lastIndex = 0;
+      let m;
+      while ((m = re.exec(text))) {
+        const id = normalizeRuleId(m[0], kind);
+        if (!rulesIndex.has(id)) continue;
+        hits.push({ start: m.index, end: m.index + m[0].length, raw: m[0], id });
+      }
+    }
+    if (!hits.length) continue;
+
+    // Sort by position; resolve overlaps by preferring the longer match.
+    hits.sort((a, b) => a.start - b.start || (b.end - b.start) - (a.end - a.start));
+    const pruned = [];
+    let cursor = -1;
+    for (const h of hits) {
+      if (h.start < cursor) continue;  // overlaps previous, drop
+      pruned.push(h);
+      cursor = h.end;
+    }
+
+    // Splice text node into [text, <a>, text, <a>, …, text] children.
+    const frag = document.createDocumentFragment();
+    let last = 0;
+    for (const h of pruned) {
+      if (h.start > last) frag.appendChild(document.createTextNode(text.slice(last, h.start)));
+      const a = document.createElement('a');
+      a.className = 'rule-ref';
+      a.href = '#';
+      a.dataset.refKey = h.id;
+      a.textContent = h.raw;
+      frag.appendChild(a);
+      last = h.end;
+    }
+    if (last < text.length) frag.appendChild(document.createTextNode(text.slice(last)));
+    textNode.parentNode.replaceChild(frag, textNode);
+  }
+}
+
+// ===== Tooltip + click navigation =====
+
+let ruleTooltipTimer = null;
+let ruleRefDocBound = false;
+
+// Document-level delegation so refs work the same whether they appear
+// inside #rendered (Current / Prev tabs) or inside the Diff tab's
+// self-review panel. Idempotent.
+function bindRuleRefHandlers() {
+  if (ruleRefDocBound) return;
+  ruleRefDocBound = true;
+
+  document.addEventListener('mouseover', (e) => {
+    const a = e.target.closest && e.target.closest('a.rule-ref');
+    if (!a) return;
+    clearTimeout(ruleTooltipTimer);
+    ruleTooltipTimer = setTimeout(() => showRuleTooltip(a), 100);
+  });
+  document.addEventListener('mouseout', (e) => {
+    const a = e.target.closest && e.target.closest('a.rule-ref');
+    if (!a) return;
+    clearTimeout(ruleTooltipTimer);
+    hideRuleTooltip();
+  });
+  document.addEventListener('click', (e) => {
+    const a = e.target.closest && e.target.closest('a.rule-ref');
+    if (!a) return;
+    e.preventDefault();
+    e.stopPropagation();
+    jumpToRuleSource(a.dataset.refKey);
+  });
+}
+
+function showRuleTooltip(refEl) {
+  const key = refEl.dataset.refKey;
+  const entry = rulesIndex.get(key);
+  if (!entry) return;
+  const tip = document.getElementById('rule-tooltip');
+  if (!tip) return;
+  tip.querySelector('.rt-source').textContent = `${entry.file} — click to open`;
+  tip.querySelector('.rt-heading').textContent = entry.heading;
+  tip.querySelector('.rt-body').textContent = entry.snippet || '(no body snippet)';
+
+  // Position below the ref; flip above if it would clip the viewport.
+  tip.hidden = false;
+  const rect = refEl.getBoundingClientRect();
+  const tipRect = tip.getBoundingClientRect();
+  let top = rect.bottom + window.scrollY + 6;
+  let left = rect.left + window.scrollX;
+  if (top + tipRect.height > window.scrollY + window.innerHeight - 20) {
+    top = rect.top + window.scrollY - tipRect.height - 6;
+  }
+  const maxLeft = window.innerWidth - tipRect.width - 16;
+  if (left > maxLeft) left = Math.max(8, maxLeft);
+  tip.style.left = left + 'px';
+  tip.style.top = top + 'px';
+}
+
+function hideRuleTooltip() {
+  const tip = document.getElementById('rule-tooltip');
+  if (tip) tip.hidden = true;
+}
+
+async function jumpToRuleSource(key) {
+  const entry = rulesIndex.get(key);
+  if (!entry) return;
+  hideRuleTooltip();
+
+  // If we're already on the right file, just scroll. Otherwise open it.
+  if (!currentFile || currentFile.name !== entry.file) {
+    try {
+      await openFile(entry.file);
+    } catch (e) {
+      alert('Could not open ' + entry.file + ': ' + e.message);
+      return;
+    }
+  }
+
+  // Scroll to the first heading whose text contains the target heading
+  // text. Headings live at H1–H6 in #rendered; we match by exact text
+  // since headings are typically unique by ID.
+  const rendered = document.getElementById('rendered');
+  const target = Array.from(rendered.querySelectorAll('h1, h2, h3, h4, h5, h6'))
+    .find((h) => h.textContent.trim() === entry.heading.trim());
+  if (target) {
+    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    target.classList.remove('rule-jump-flash');
+    void target.offsetWidth;
+    target.classList.add('rule-jump-flash');
+    setTimeout(() => target.classList.remove('rule-jump-flash'), 1400);
+  }
+}
+
 // ============================== Folder picker ========================
 
 // On page load, look up the last-used directory handle and surface a
@@ -402,6 +692,10 @@ async function applyFolder(handle) {
   loadAnnotations();
   loadBaselines();
   renderStrandedSidebar();
+  // Build the cross-reference index in the background — it's I/O bound
+  // and the user can start reading before it finishes. Tooltips just
+  // won't fire until the index is populated.
+  buildRulesIndex().catch((e) => console.warn('[redpen] buildRulesIndex failed', e));
 
   document.getElementById('export-comments').disabled = false;
   document.getElementById('clear-comments').disabled = false;
@@ -806,6 +1100,9 @@ function renderActiveTab() {
   const renderText = showMetadata ? rawContent : stripMetadata(rawContent);
   rendered.innerHTML = renderMarkdownWithMath(renderText);
   numberSectionsAndParagraphs(rendered);
+  // Wrap rule-ID references before highlights — the locator just reads
+  // textContent, which is unchanged by the <a> wrapping.
+  wrapRuleReferences(rendered);
   refreshAnnotationsUI();
 
   // Toggle the article into a read-only visual state on Prev so the user
@@ -2866,6 +3163,9 @@ function buildSelfReviewPanel(reviews) {
     const body = document.createElement('div');
     body.className = 'self-review-body';
     body.innerHTML = renderMarkdownWithMath(block.notes);
+    // Self-review bullets are heavy with fl-NNN refs — wrap them too so
+    // hover/click works the same as in the main reading view.
+    wrapRuleReferences(body);
     details.appendChild(body);
 
     panel.appendChild(details);
