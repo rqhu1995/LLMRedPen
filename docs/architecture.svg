@@ -43,17 +43,20 @@
   <!-- Separator inside left panel -->
   <line x1="82" y1="240" x2="218" y2="240" stroke="#f0d4cc" stroke-width="1"/>
 
-  <!-- Action labels (centred) -->
-  <text x="150" y="310" text-anchor="middle" font-size="18" font-style="italic" fill="#333">maintain</text>
-  <text x="150" y="332" text-anchor="middle" font-size="13" fill="#888">(rare)</text>
+  <!-- Action labels (centred, each block's visual centre = card centre) -->
+  <!-- RULES card centre y=260 -->
+  <text x="150" y="254" text-anchor="middle" font-size="18" font-style="italic" fill="#333">maintain</text>
+  <text x="150" y="274" text-anchor="middle" font-size="13" fill="#888">(rare)</text>
 
-  <text x="150" y="438" text-anchor="middle" font-size="18" font-style="italic" fill="#333">review</text>
-  <text x="150" y="462" text-anchor="middle" font-size="18" font-style="italic" fill="#333">· approve</text>
+  <!-- PLANS card centre y=420 -->
+  <text x="150" y="414" text-anchor="middle" font-size="18" font-style="italic" fill="#333">review</text>
+  <text x="150" y="436" text-anchor="middle" font-size="18" font-style="italic" fill="#333">· approve</text>
 
-  <text x="150" y="568" text-anchor="middle" font-size="18" font-style="italic" fill="#333">annotate</text>
-  <text x="150" y="592" text-anchor="middle" font-size="18" font-style="italic" fill="#333">· diff</text>
+  <!-- MANUSCRIPT card centre y=580 -->
+  <text x="150" y="574" text-anchor="middle" font-size="18" font-style="italic" fill="#333">annotate</text>
+  <text x="150" y="596" text-anchor="middle" font-size="18" font-style="italic" fill="#333">· diff</text>
 
-  <!-- Arrows from left panel into the cards -->
+  <!-- Arrows from left panel into the cards (at card centres) -->
   <line x1="232" y1="260" x2="278" y2="260" stroke="#555" stroke-width="1.5" marker-end="url(#arrow-small)"/>
   <line x1="232" y1="420" x2="278" y2="420" stroke="#555" stroke-width="1.5" marker-end="url(#arrow-small)"/>
   <line x1="232" y1="580" x2="278" y2="580" stroke="#555" stroke-width="1.5" marker-end="url(#arrow-small)"/>
@@ -78,16 +81,19 @@
   <!-- Separator inside right panel -->
   <line x1="882" y1="240" x2="1018" y2="240" stroke="#ddd" stroke-width="1"/>
 
-  <!-- Action labels (centred) -->
-  <text x="950" y="320" text-anchor="middle" font-size="18" font-style="italic" fill="#333">consult</text>
+  <!-- Action labels (centred, each block's visual centre = card centre) -->
+  <!-- RULES card centre y=260 -->
+  <text x="950" y="266" text-anchor="middle" font-size="18" font-style="italic" fill="#333">consult</text>
 
-  <text x="950" y="438" text-anchor="middle" font-size="18" font-style="italic" fill="#333">draft</text>
-  <text x="950" y="462" text-anchor="middle" font-size="18" font-style="italic" fill="#333">· revise</text>
+  <!-- PLANS card centre y=420 -->
+  <text x="950" y="414" text-anchor="middle" font-size="18" font-style="italic" fill="#333">draft</text>
+  <text x="950" y="436" text-anchor="middle" font-size="18" font-style="italic" fill="#333">· revise</text>
 
-  <text x="950" y="568" text-anchor="middle" font-size="18" font-style="italic" fill="#333">emit</text>
-  <text x="950" y="592" text-anchor="middle" font-size="18" font-style="italic" fill="#333">· self-review</text>
+  <!-- MANUSCRIPT card centre y=580 -->
+  <text x="950" y="574" text-anchor="middle" font-size="18" font-style="italic" fill="#333">emit</text>
+  <text x="950" y="596" text-anchor="middle" font-size="18" font-style="italic" fill="#333">· self-review</text>
 
-  <!-- Arrows from right panel into the cards -->
+  <!-- Arrows from right panel into the cards (at card centres) -->
   <line x1="868" y1="260" x2="822" y2="260" stroke="#555" stroke-width="1.5" marker-end="url(#arrow-small)"/>
   <line x1="868" y1="420" x2="822" y2="420" stroke="#555" stroke-width="1.5" marker-end="url(#arrow-small)"/>
   <line x1="868" y1="580" x2="822" y2="580" stroke="#555" stroke-width="1.5" marker-end="url(#arrow-small)"/>
