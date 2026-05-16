@@ -447,6 +447,20 @@ function prettyGroupName(slug) {
 // nested tree like a node_modules sibling that crept past the filter.
 const MAX_SUBFOLDER_DEPTH = 4;
 
+// Folders that never belong in the review sidebar — build / reference
+// material that isn't review-worthy prose. Case-insensitive. Edit here
+// if your project uses different conventions.
+const IGNORED_FOLDERS = new Set([
+  'node_modules',
+  'docs',     // user-side reference docs, not manuscript prose
+  'latex',    // build output / LaTeX scaffolding
+  'archive',  // historical snapshots — clutter inside e.g. rules/archive/
+]);
+
+function shouldSkipFolder(name) {
+  return name.startsWith('.') || IGNORED_FOLDERS.has(name.toLowerCase());
+}
+
 async function collectMdRecursively(dirHandle, prefix, depth) {
   const out = [];
   if (depth > MAX_SUBFOLDER_DEPTH) return out;
@@ -455,7 +469,7 @@ async function collectMdRecursively(dirHandle, prefix, depth) {
       if (entry.kind === 'file' && name.endsWith('.md')) {
         out.push(prefix + '/' + name);
       } else if (entry.kind === 'directory') {
-        if (name.startsWith('.') || name === 'node_modules') continue;
+        if (shouldSkipFolder(name)) continue;
         const nested = await collectMdRecursively(entry, prefix + '/' + name, depth + 1);
         out.push(...nested);
       }
@@ -479,9 +493,7 @@ async function listFiles() {
     if (entry.kind === 'file' && name.endsWith('.md')) {
       rootFiles.push(name);
     } else if (entry.kind === 'directory') {
-      // Skip hidden / dotfile-style folders and common VCS / build
-      // directories. They almost never contain reviewable prose.
-      if (name.startsWith('.') || name === 'node_modules') continue;
+      if (shouldSkipFolder(name)) continue;
       const subFiles = await collectMdRecursively(entry, name, 1);
       if (subFiles.length) {
         subFiles.sort((a, b) => a.localeCompare(b));
