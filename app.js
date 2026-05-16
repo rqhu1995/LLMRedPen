@@ -41,6 +41,12 @@ let showMetadata = false;
 // is opened. Shape: Map<normalizedId, { file, heading, snippet }>.
 // See buildRulesIndex / wrapRuleReferences.
 let rulesIndex = new Map();
+
+// Where the user was when they clicked a .rule-ref. Single-level history
+// (a jump from B during a jump-from-A overwrites the A return state).
+// Cleared on manual sidebar navigation. See captureReturnState /
+// clearReturnState / jumpBack.
+let returnState = null;
 let mdParser = null;          // markdown-it instance
 let activeSelection = null;   // { text, anchor, contextBefore, contextAfter, charOffset }
 let rulesData = null;         // { handle, text, sections } while rules editor is open
@@ -598,12 +604,17 @@ async function jumpToRuleSource(key) {
   if (!entry) return;
   hideRuleTooltip();
 
-  // If we're already on the right file, just scroll. Otherwise open it.
+  // Snapshot where we are BEFORE we move, so the "← Back" button can
+  // restore exactly this state. Capture happens even for same-file
+  // jumps (the heading might be far from the current scroll position).
+  captureReturnState();
+
   if (!currentFile || currentFile.name !== entry.file) {
     try {
-      await openFile(entry.file);
+      await openFile(entry.file, { isJump: true });
     } catch (e) {
       alert('Could not open ' + entry.file + ': ' + e.message);
+      clearReturnState();
       return;
     }
   }
@@ -621,6 +632,63 @@ async function jumpToRuleSource(key) {
     target.classList.add('rule-jump-flash');
     setTimeout(() => target.classList.remove('rule-jump-flash'), 1400);
   }
+}
+
+// ===== Return-state stack (single level) =====
+
+function captureReturnState() {
+  if (!currentFile) return;
+  returnState = {
+    file: currentFile.name,
+    tab: activeTab,
+    scrollY: document.getElementById('content').scrollTop,
+  };
+  updateJumpBackButton();
+}
+
+function clearReturnState() {
+  if (!returnState) return;
+  returnState = null;
+  updateJumpBackButton();
+}
+
+function updateJumpBackButton() {
+  const btn = document.getElementById('jump-back');
+  if (!btn) return;
+  if (returnState) {
+    // Show just the leaf so the button stays narrow; full path lives
+    // in the title attribute.
+    const leaf = returnState.file.split('/').pop();
+    btn.textContent = '← Back to ' + leaf;
+    btn.title = `Return to ${returnState.file} at the position you left it`;
+    btn.hidden = false;
+  } else {
+    btn.hidden = true;
+  }
+}
+
+async function jumpBack() {
+  if (!returnState) return;
+  const target = returnState;
+  returnState = null;  // clear up-front so openFile's isJump:false path
+                       // doesn't try to re-clear via clearReturnState
+  if (!currentFile || currentFile.name !== target.file) {
+    try {
+      await openFile(target.file, { isJump: true });
+    } catch (e) {
+      alert('Could not return to ' + target.file + ': ' + e.message);
+      updateJumpBackButton();
+      return;
+    }
+  }
+  if (target.tab && target.tab !== activeTab) {
+    setActiveTab(target.tab);
+  }
+  // Restore scroll after the render settles. setActiveTab is sync but
+  // smooth scrolling already won; a microtask defer keeps it crisp.
+  await Promise.resolve();
+  document.getElementById('content').scrollTop = target.scrollY;
+  updateJumpBackButton();
 }
 
 // ============================== Folder picker ========================
@@ -979,12 +1047,17 @@ async function resolveFileHandle(name) {
   return h.getFileHandle(leaf);
 }
 
-async function openFile(name) {
+async function openFile(name, opts) {
+  opts = opts || {};
   const handle = await resolveFileHandle(name);
   const file = await handle.getFile();
   const text = await file.text();
   currentFile = { name, handle, content: text };
   persistLastOpenedFile(name);
+  // Manual navigation (sidebar click) cancels any pending return state —
+  // the user has deliberately moved on; the "← Back" affordance would
+  // mislead them. Rule-ref jumps pass {isJump: true} to preserve it.
+  if (!opts.isJump) clearReturnState();
 
   document.querySelectorAll('.file-link').forEach((a) => {
     a.classList.toggle('active', a.dataset.filename === name);
@@ -3369,6 +3442,7 @@ function bindUIEvents() {
   document.getElementById('proceed-next-round').onclick = promoteToNextRound;
   document.getElementById('reload-current-file').onclick = reloadCurrentFile;
   document.getElementById('toggle-metadata').onclick = toggleShowMetadata;
+  document.getElementById('jump-back').onclick = jumpBack;
 
   document.querySelectorAll('.tab-btn').forEach((btn) => {
     btn.onclick = () => setActiveTab(btn.dataset.tab);

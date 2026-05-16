@@ -271,6 +271,31 @@ html, body {
   gap: 2px;
 }
 
+/* Back-to-prior-location button. Visible only after a rule-ref jump;
+   tinted accent so it reads as "navigation context" rather than
+   "another tab". */
+.jump-back-btn {
+  padding: 5px 12px;
+  font-family: var(--sans);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--accent, #c0392b);
+  background: rgba(192, 57, 43, 0.06);
+  border: 1px solid rgba(192, 57, 43, 0.4);
+  border-radius: 4px;
+  cursor: pointer;
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-right: 12px;
+  transition: background 0.12s, border-color 0.12s;
+}
+.jump-back-btn:hover {
+  background: rgba(192, 57, 43, 0.14);
+  border-color: var(--accent, #c0392b);
+}
+
 .tab-btn {
   background: transparent;
   border: 1px solid var(--border);
