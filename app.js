@@ -783,16 +783,29 @@ async function applyFolder(handle) {
   }
 }
 
-// Any .md file under an immediate subdirectory (one level deep) gets
-// half-treatment: annotatable + reloadable, but no round model (no
-// Prev/Diff tabs, no Proceed button). Root .md files keep full round
-// support. Storage keys carry the relative path (e.g.
-// "plans/§1.1-imitation-plan.md") so files with the same leaf name
-// across folders don't collide.
-function isSubfolderFile(name) { return typeof name === 'string' && name.includes('/'); }
+// Files that get the FULL round model (Prev / Diff / Current + Proceed)
+// vs. half-treatment (annotatable + reloadable, but no rounds).
+//
+// Full:
+//   - Any .md at the folder root
+//   - Anything under a `manuscript/` subfolder — common layout where
+//     the user keeps the draft itself in its own subfolder for tidiness
+//
+// Half:
+//   - Files under any other subfolder (plans/, rules/, self-review/, …)
+//
+// If your project uses a different name for the manuscript subfolder,
+// add it to MANUSCRIPT_FOLDERS below.
+const MANUSCRIPT_FOLDERS = new Set(['manuscript']);  // case-insensitive
+
+function isSubfolderFile(name) {
+  if (typeof name !== 'string' || !name.includes('/')) return false;
+  const top = name.split('/')[0].toLowerCase();
+  if (MANUSCRIPT_FOLDERS.has(top)) return false;
+  return true;
+}
 // Back-compat alias — older helpers (and the writing-agent docs) still
-// reach for isPlanFile. Same semantics now that every subfolder is
-// "half-treatment".
+// reach for isPlanFile. Same semantics now: it means "half-treatment".
 function isPlanFile(name) { return isSubfolderFile(name); }
 
 function prettyGroupName(slug) {
@@ -901,12 +914,13 @@ function appendFileGroup(parent, label, names, opts) {
   for (const name of names) {
     const a = document.createElement('a');
     a.href = '#';
-    a.className = 'file-link' + (opts.subfolder ? ' subfolder' : '');
-    // For subfolder files, strip the group prefix from the display so
-    // `manuscript/plans/foo.md` shows as `plans/foo.md` under the
-    // Manuscript group (still distinguishable from `manuscript/foo.md`).
+    // .subfolder is a *treatment* signal, not a *grouping* signal: it
+    // tracks isSubfolderFile so a `manuscript/foo.md` file (round-
+    // model treatment) reads the same colour as a root file, while
+    // `plans/foo.md` and `rules/foo.md` stay muted.
+    a.className = 'file-link' + (isSubfolderFile(name) ? ' subfolder' : '');
     a.textContent = opts.subfolder
-      ? name.slice(opts.prefix.length + 1)  // +1 to drop the trailing '/'
+      ? name.slice(opts.prefix.length + 1)  // strip the group prefix
       : name;
     a.dataset.filename = name;
     a.title = name;

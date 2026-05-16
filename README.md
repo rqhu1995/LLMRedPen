@@ -303,14 +303,17 @@ folders are walked recursively to a few levels — so
 
 | Treatment | Where | Tab bar | Proceed button | Annotate / Export | Reload |
 |---|---|---|---|---|---|
-| Full (round model) | Root `.md` files | Prev / Diff / Current | yes | yes | yes |
-| Half | Any subfolder file | Current only (tabs hidden) | no | yes | yes |
+| Full (round model) | Root `.md` files + anything under `manuscript/` | Prev / Diff / Current | yes | yes | yes |
+| Half | Files in any other subfolder (`plans/`, `rules/`, `self-review/`, …) | Current only (tabs hidden) | no | yes | yes |
 
 Half-treatment fits files that don't iterate the way the manuscript
 does — plans written once per subsection, rules you maintain by hand,
 self-review notes produced per round. They're still annotatable and
 still exportable; they just don't carry a "previous round" of their
-own. Keep manuscript files at root if you want the round model.
+own. The `manuscript/` subfolder is special-cased so you can keep
+your drafts there for tidiness without losing the round model; if you
+use a different folder name for the manuscript itself, add it to
+`MANUSCRIPT_FOLDERS` near the top of `app.js`.
 
 ---
 
