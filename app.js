@@ -234,12 +234,18 @@ function escapeHtml(s) {
 function stripMetadata(text) {
   // (1) HTML comments — multi-line, anywhere.
   text = text.replace(/<!--[\s\S]*?-->/g, '');
+  // (2) Leading blockquote(s) at the top of the file.
+  text = stripLeadingBlockquote(text);
+  // (3) `**Self-review notes` blocks (Patch 5 v2 author convention).
+  text = stripSelfReviewBlocks(text);
+  return text;
+}
 
-  // (2) Leading blockquote(s). Walk lines from the top, allowing blank
-  // lines and headings to pass through. The first contiguous run of
-  // `>`-prefixed lines we encounter gets dropped. As soon as we see a
-  // body line (anything that's neither blank, heading, nor blockquote)
-  // we stop touching the file.
+function stripLeadingBlockquote(text) {
+  // Walk lines from the top, allowing blank lines and headings to pass
+  // through. The first contiguous run of `>`-prefixed lines we hit gets
+  // dropped. As soon as we see a body line (anything that's neither
+  // blank, heading, nor blockquote) we stop.
   const lines = text.split('\n');
   const out = [];
   let stillLeading = true;
@@ -256,6 +262,47 @@ function stripMetadata(text) {
       continue;
     }
     stillLeading = false;
+    out.push(lines[i++]);
+  }
+  return out.join('\n');
+}
+
+// Self-review pattern (Patch 5 v2): a paragraph whose first non-blank line
+// starts literally with `**Self-review notes`, followed (after an optional
+// blank line) by a bullet list. Strip the header paragraph + the entire
+// bullet list + any continuation/indented lines, until we hit non-list
+// content. The literal prefix is part of the contract with the writing
+// agent — see docs/agent-prompt.md.
+function stripSelfReviewBlocks(text) {
+  const lines = text.split('\n');
+  const out = [];
+  let i = 0;
+  while (i < lines.length) {
+    if (lines[i].trim().startsWith('**Self-review notes')) {
+      // (a) Skip the header paragraph (up to the first blank line).
+      while (i < lines.length && lines[i].trim() !== '') i++;
+      // (b) Skip blank lines.
+      while (i < lines.length && lines[i].trim() === '') i++;
+      // (c) Skip the bullet list. Includes intra-list blank lines (if the
+      //     next non-blank line is also a bullet) and indented
+      //     continuation lines of bullet items.
+      while (i < lines.length) {
+        const trimmed = lines[i].trim();
+        if (trimmed === '') {
+          let j = i + 1;
+          while (j < lines.length && lines[j].trim() === '') j++;
+          if (j < lines.length && /^[-*+]\s/.test(lines[j].trim())) {
+            i = j;
+            continue;
+          }
+          break;  // blank then non-bullet → end of list
+        }
+        if (/^[-*+]\s/.test(trimmed)) { i++; continue; }
+        if (/^\s+\S/.test(lines[i])) { i++; continue; }  // continuation
+        break;
+      }
+      continue;
+    }
     out.push(lines[i++]);
   }
   return out.join('\n');
@@ -361,6 +408,7 @@ async function applyFolder(handle) {
   renderStrandedSidebar();
 
   document.getElementById('export-comments').disabled = false;
+  document.getElementById('clear-comments').disabled = false;
   document.getElementById('open-rules-editor').disabled = false;
   document.getElementById('comments-pane').hidden = false;
 
@@ -377,28 +425,67 @@ async function applyFolder(handle) {
   }
 }
 
+// Plan files (per the Patch 5 v2 author workflow) live under a
+// optional `plans/` subdirectory. The viewer treats them as second-class:
+// annotatable + reloadable, but not part of the round model. Storage keys
+// use the relative path (e.g. "plans/§1.1-imitation-plan.md") so they
+// don't collide with same-named root files.
+const PLAN_PREFIX = 'plans/';
+function isPlanFile(name) { return typeof name === 'string' && name.startsWith(PLAN_PREFIX); }
+
 async function listFiles() {
-  const files = [];
+  // (1) Root .md files — the manuscript.
+  const rootFiles = [];
   for await (const [name, entry] of directoryHandle.entries()) {
-    if (entry.kind === 'file' && name.endsWith('.md')) {
-      files.push(name);
-    }
+    if (entry.kind === 'file' && name.endsWith('.md')) rootFiles.push(name);
   }
-  files.sort((a, b) => a.localeCompare(b));
-  folderFileNames = files;
+  rootFiles.sort((a, b) => a.localeCompare(b));
+
+  // (2) plans/*.md if the subfolder exists. getDirectoryHandle throws if
+  // the folder isn't there; that's just "user hasn't started using plans
+  // yet", not an error.
+  const planFiles = [];
+  try {
+    const plansHandle = await directoryHandle.getDirectoryHandle(PLAN_PREFIX.replace(/\/$/, ''));
+    for await (const [name, entry] of plansHandle.entries()) {
+      if (entry.kind === 'file' && name.endsWith('.md')) {
+        planFiles.push(PLAN_PREFIX + name);
+      }
+    }
+    planFiles.sort((a, b) => a.localeCompare(b));
+  } catch (e) { /* plans/ absent, fine */ }
+
+  folderFileNames = rootFiles.concat(planFiles);
 
   const list = document.getElementById('file-list');
   list.innerHTML = '';
-  for (const name of files) {
+
+  // Manuscript group — always shown (folder is guaranteed to have CLAUDE.md).
+  appendFileGroup(list, 'Manuscript', rootFiles);
+  // Plans group — only when at least one plan file exists.
+  if (planFiles.length) appendFileGroup(list, 'Plans', planFiles, { plan: true });
+
+  renderStrandedSidebar();
+}
+
+function appendFileGroup(parent, label, names, opts) {
+  opts = opts || {};
+  const heading = document.createElement('h3');
+  heading.className = 'file-group-title';
+  heading.textContent = label;
+  parent.appendChild(heading);
+  for (const name of names) {
     const a = document.createElement('a');
     a.href = '#';
-    a.className = 'file-link';
-    a.textContent = name;
+    a.className = 'file-link' + (opts.plan ? ' plan' : '');
+    // Show just the leaf for plan entries (the group label says "Plans"
+    // already; showing "plans/foo.md" would be redundant).
+    a.textContent = opts.plan ? name.slice(PLAN_PREFIX.length) : name;
     a.dataset.filename = name;
+    a.title = name;
     a.onclick = (e) => { e.preventDefault(); openFile(name); };
-    list.appendChild(a);
+    parent.appendChild(a);
   }
-  renderStrandedSidebar();
 }
 
 // Annotation buckets whose key isn't in the current folder file list — most
@@ -520,8 +607,19 @@ function migrateBucket(from, to) {
 
 // ============================== File rendering =======================
 
+// Resolve a possibly-prefixed file name ("foo.md" or "plans/foo.md") to
+// the matching FileSystemFileHandle, walking through the subdirectory
+// handle when needed.
+async function resolveFileHandle(name) {
+  if (isPlanFile(name)) {
+    const plansHandle = await directoryHandle.getDirectoryHandle(PLAN_PREFIX.replace(/\/$/, ''));
+    return plansHandle.getFileHandle(name.slice(PLAN_PREFIX.length));
+  }
+  return directoryHandle.getFileHandle(name);
+}
+
 async function openFile(name) {
-  const handle = await directoryHandle.getFileHandle(name);
+  const handle = await resolveFileHandle(name);
   const file = await handle.getFile();
   const text = await file.text();
   currentFile = { name, handle, content: text };
@@ -582,6 +680,7 @@ function isInteractiveTab() {
 function setActiveTab(name) {
   if (!currentFile) return;
   if (name === activeTab) return;
+  if (isPlanFile(currentFile.name) && name !== 'current') return;  // plans are Current-only
   if (name === 'prev' || name === 'diff') {
     if (!baselines[currentFile.name]) return;  // disabled
   }
@@ -593,7 +692,16 @@ function setActiveTab(name) {
 }
 
 function refreshTabAvailability() {
+  const plan = !!(currentFile && isPlanFile(currentFile.name));
   const hasBaseline = !!(currentFile && baselines[currentFile.name]);
+
+  // Plan files don't participate in the round model: hide Prev / Diff
+  // buttons entirely and force activeTab back to Current. The tab bar
+  // itself stays visible so Reload / Show metadata still have a home.
+  const tabBar = document.getElementById('tab-bar');
+  tabBar.classList.toggle('plan-file', plan);
+  if (plan) activeTab = 'current';
+
   document.querySelectorAll('.tab-btn').forEach((b) => {
     if (b.dataset.tab === 'prev' || b.dataset.tab === 'diff') {
       b.disabled = !hasBaseline;
@@ -601,11 +709,10 @@ function refreshTabAvailability() {
     b.classList.toggle('active', b.dataset.tab === activeTab);
   });
 
+  // Allow promote whenever a manuscript file is on Current. Plan files
+  // never offer Proceed because their rounds aren't a thing.
   const proceed = document.getElementById('proceed-next-round');
-  // Allow promote whenever a file is open: round-1 promote is fine even
-  // with zero comments (locks a clean baseline). Hide it on non-current
-  // tabs so the user only ever sees the button in its working context.
-  proceed.disabled = !isInteractiveTab();
+  proceed.disabled = plan || !isInteractiveTab();
 }
 
 // Renders whatever the active tab needs into the article container (or the
@@ -1416,22 +1523,9 @@ function showExportModal() {
   }
 
   // Re-render on scope change.
-  for (const r of radios) r.onchange = () => { renderExportList(); updateDeleteButton(); };
-  updateDeleteButton();
+  for (const r of radios) r.onchange = () => { renderExportList(); };
   renderExportList();
   document.getElementById('export-modal').hidden = false;
-}
-
-function updateDeleteButton() {
-  const btn = document.getElementById('clear-all');
-  const scope = getExportScope();
-  if (scope === 'current' && currentFile) {
-    btn.textContent = `Delete this file's`;
-    btn.title = `Delete annotations for ${currentFile.name}`;
-  } else {
-    btn.textContent = 'Delete all';
-    btn.title = 'Delete annotations for every file in this folder';
-  }
 }
 
 function renderExportList() {
@@ -1456,7 +1550,7 @@ async function saveAsFile() {
   const scope = getExportScope();
   const text = buildExportText(scope);
   const base = (scope === 'current' && currentFile)
-    ? currentFile.name.replace(/\.md$/i, '')
+    ? currentFile.name.replace(/\.md$/i, '').replace(/\//g, '-')
     : directoryHandle.name;
   const suggested = `${base}-comments.txt`;
 
@@ -1482,19 +1576,61 @@ async function saveAsFile() {
   }
 }
 
-function clearAllAnnotations() {
-  const scope = getExportScope();
-  if (scope === 'current' && currentFile) {
-    if (!confirm(`Delete all annotations for "${currentFile.name}"?\n\nThis cannot be undone.`)) return;
-    delete annotations[currentFile.name];
+// ============================== Clear comments modal ================
+//
+// Deletion lives in its own modal — pulled out of Export so the user can't
+// confuse "send my work to the agent" with "destroy my work". The scope
+// radio shows real comment counts so the consequence of clicking Delete
+// is unambiguous.
+
+function showClearCommentsModal() {
+  const modal = document.getElementById('clear-comments-modal');
+  const fileRadio = modal.querySelector('input[value="current"]');
+  const allRadio = modal.querySelector('input[value="all"]');
+
+  const currentName = currentFile ? currentFile.name : null;
+  const currentCount = currentName ? (annotations[currentName] || []).length : 0;
+  const allCount = Object.values(annotations).reduce((n, arr) => n + (arr ? arr.length : 0), 0);
+
+  document.getElementById('clear-scope-current-name').textContent =
+    currentName ? `"${currentName}"` : 'this file';
+  document.getElementById('clear-scope-current-count').textContent =
+    currentName ? `(${currentCount} comment${currentCount === 1 ? '' : 's'})` : '(no file open)';
+  document.getElementById('clear-scope-all-count').textContent =
+    `(${allCount} comment${allCount === 1 ? '' : 's'})`;
+
+  // If no file is open, "this file" is meaningless — flip to all.
+  if (!currentName) {
+    fileRadio.disabled = true;
+    allRadio.checked = true;
   } else {
-    if (!confirm('Delete all annotations across every file in this folder?\n\nThis cannot be undone.')) return;
+    fileRadio.disabled = false;
+    fileRadio.checked = true;
+  }
+
+  modal.hidden = false;
+}
+
+function hideClearCommentsModal() {
+  document.getElementById('clear-comments-modal').hidden = true;
+}
+
+function confirmClearComments() {
+  const scope = document.querySelector('input[name="clear-scope"]:checked').value;
+  if (scope === 'current' && currentFile) {
+    delete annotations[currentFile.name];
+  } else if (scope === 'all') {
     annotations = {};
+  } else {
+    return;
   }
   persistAnnotations();
   refreshAnnotationsUI();
   renderStrandedSidebar();
-  renderExportList();
+  // If the export modal happens to be open behind this one, keep its
+  // preview in sync.
+  if (!document.getElementById('export-modal').hidden) renderExportList();
+  hideClearCommentsModal();
 }
 
 // ============================== Right pane: comments list ============
@@ -2492,10 +2628,20 @@ function renderDiffTab() {
     return;
   }
 
-  // When the user has metadata hidden in the reading view, also strip it
-  // from the diff inputs so the diff stays focused on prose changes
-  // (changelog entries the author writes between rounds shouldn't show as
-  // edits to the agent's revision). Toggle on to compare raw sources.
+  // (A) Self-review panel — agent's per-subsection narration of what it
+  // did in the current round. Sits at the top of the Diff tab so the
+  // user can read "why" before scanning the textual "what". Drawn even
+  // when the prose diff is empty (the agent may have only updated its
+  // notes; that's still review-worthy).
+  const reviews = extractSelfReviewBlocks(currentFile.content);
+  if (reviews.length) {
+    container.appendChild(buildSelfReviewPanel(reviews));
+  }
+
+  // (B) Textual diff. When the user has metadata hidden, strip it from
+  // both sides so the diff stays focused on prose changes (the agent's
+  // self-review and changelog comments shouldn't read as edits to the
+  // manuscript itself — they're shown above instead).
   const oldText = showMetadata ? baseline.content : stripMetadata(baseline.content);
   const newText = showMetadata ? currentFile.content : stripMetadata(currentFile.content);
 
@@ -2503,12 +2649,15 @@ function renderDiffTab() {
     const msg = showMetadata
       ? 'No changes between the previous round and the current file.'
       : 'No prose changes between the previous round and the current file. (Toggle <em>Show metadata</em> to include changelog comments and front-matter.)';
-    container.innerHTML = `<p class="diff-empty">${msg}</p>`;
+    const p = document.createElement('p');
+    p.className = 'diff-empty';
+    p.innerHTML = msg;
+    container.appendChild(p);
     return;
   }
 
   if (typeof Diff === 'undefined' || !Diff.diffWordsWithSpace) {
-    container.textContent = 'Diff library failed to load. Reload the page.';
+    container.appendChild(document.createTextNode('Diff library failed to load. Reload the page.'));
     return;
   }
 
@@ -2533,6 +2682,105 @@ function renderDiffTab() {
   container.appendChild(pre);
 }
 
+// Walk markdown source, find each ### subsection and (if present) the
+// `**Self-review notes` block that belongs to it. Returns one entry per
+// block in document order: { index (1-based), title, notes (markdown
+// source of the bullet list) }.
+function extractSelfReviewBlocks(text) {
+  const lines = text.split('\n');
+  const blocks = [];
+  let currentTitle = null;
+  let subsectionIndex = 0;
+  let i = 0;
+  while (i < lines.length) {
+    const trimmed = lines[i].trim();
+
+    if (/^###\s+/.test(trimmed)) {
+      currentTitle = trimmed.replace(/^###\s+/, '');
+      subsectionIndex++;
+      i++;
+      continue;
+    }
+
+    if (trimmed.startsWith('**Self-review notes')) {
+      // skip the header paragraph
+      while (i < lines.length && lines[i].trim() !== '') i++;
+      while (i < lines.length && lines[i].trim() === '') i++;
+      // collect the bullet block (same rules as the strip path)
+      const bullets = [];
+      while (i < lines.length) {
+        const t = lines[i].trim();
+        if (t === '') {
+          let j = i + 1;
+          while (j < lines.length && lines[j].trim() === '') j++;
+          if (j < lines.length && /^[-*+]\s/.test(lines[j].trim())) {
+            bullets.push('');
+            i = j;
+            continue;
+          }
+          break;
+        }
+        if (/^[-*+]\s/.test(t)) { bullets.push(lines[i]); i++; continue; }
+        if (/^\s+\S/.test(lines[i])) { bullets.push(lines[i]); i++; continue; }
+        break;
+      }
+      blocks.push({
+        index: subsectionIndex || blocks.length + 1,
+        title: currentTitle || '(file-level)',
+        notes: bullets.join('\n'),
+      });
+      continue;
+    }
+
+    i++;
+  }
+  return blocks;
+}
+
+function buildSelfReviewPanel(reviews) {
+  const panel = document.createElement('section');
+  panel.className = 'self-review-panel';
+
+  const head = document.createElement('div');
+  head.className = 'self-review-panel-head';
+  head.innerHTML =
+    `<span class="srp-title">Agent self-review</span>` +
+    `<span class="srp-count">${reviews.length} subsection${reviews.length === 1 ? '' : 's'}</span>` +
+    `<button type="button" class="srp-toggle-all" data-state="closed">Expand all</button>`;
+  panel.appendChild(head);
+
+  for (const block of reviews) {
+    const details = document.createElement('details');
+    details.className = 'self-review-row';
+    const summary = document.createElement('summary');
+    summary.innerHTML =
+      `<span class="sr-num">§1.${block.index}</span>` +
+      `<span class="sr-title">${escapeHtml(block.title)}</span>` +
+      `<span class="sr-chev" aria-hidden="true">▾</span>`;
+    details.appendChild(summary);
+
+    const body = document.createElement('div');
+    body.className = 'self-review-body';
+    body.innerHTML = renderMarkdownWithMath(block.notes);
+    details.appendChild(body);
+
+    panel.appendChild(details);
+  }
+
+  // Wire "Expand all / Collapse all" toggle for fast scanning.
+  const toggleBtn = head.querySelector('.srp-toggle-all');
+  toggleBtn.onclick = () => {
+    const opening = toggleBtn.dataset.state === 'closed';
+    panel.querySelectorAll('details.self-review-row').forEach((d) => {
+      d.open = opening;
+    });
+    toggleBtn.dataset.state = opening ? 'open' : 'closed';
+    toggleBtn.textContent = opening ? 'Collapse all' : 'Expand all';
+  };
+
+  return panel;
+}
+
 // ============================== Reload current file ==================
 //
 // Re-reads the current file from disk and re-renders the active tab.
@@ -2543,18 +2791,92 @@ function renderDiffTab() {
 async function reloadCurrentFile() {
   if (!currentFile || !directoryHandle) return;
   const fname = currentFile.name;
+  let text, handle;
   try {
-    const handle = await directoryHandle.getFileHandle(fname);
+    handle = await resolveFileHandle(fname);
     const file = await handle.getFile();
-    const text = await file.text();
-    const changed = text !== currentFile.content;
-    currentFile = { name: fname, handle, content: text };
-    renderActiveTab();
-    flashReloadButton(changed ? 'Reloaded ✓' : 'No changes');
+    text = await file.text();
   } catch (e) {
     console.warn('[redpen] reload failed', e);
     alert('Reload failed: ' + e.message);
+    return;
   }
+
+  const changed = text !== currentFile.content;
+  const pending = (annotations[fname] || []).length;
+
+  // Danger zone: file moved on disk AND the user has comments anchored
+  // against the in-memory version. Silently overwriting would lose the
+  // baseline. Route through the safety modal so the user decides
+  // (Promote / discard / cancel) instead of paying for a forgotten Proceed.
+  if (changed && pending > 0) {
+    showReloadSafetyModal({ fname, newText: text, newHandle: handle, pending });
+    return;
+  }
+
+  // Safe path — no comments to lose, or no change to apply.
+  currentFile = { name: fname, handle, content: text };
+  renderActiveTab();
+  flashReloadButton(changed ? 'Reloaded ✓' : 'No changes');
+}
+
+// State for the open reload-safety modal. The fetched content is held here
+// so the three choice handlers don't have to re-fetch (avoids racing the
+// disk if the agent is still writing).
+let pendingReload = null;
+
+function showReloadSafetyModal({ fname, newText, newHandle, pending }) {
+  pendingReload = { fname, newText, newHandle };
+  document.getElementById('reload-safety-summary').textContent =
+    `"${fname}" has been edited since you opened it`;
+  document.getElementById('reload-safety-count').textContent =
+    `${pending} comment${pending === 1 ? '' : 's'}`;
+  // Plan files don't participate in rounds, so "Lock as Prev" is meaningless.
+  // Hide the Promote choice; the user picks Discard or Cancel.
+  document.getElementById('reload-promote').hidden = isPlanFile(fname);
+  document.getElementById('reload-safety-modal').hidden = false;
+}
+
+function hideReloadSafetyModal() {
+  pendingReload = null;
+  document.getElementById('reload-safety-modal').hidden = true;
+}
+
+// "Lock this round, then load." Synthetic Proceed: snapshot the in-memory
+// (pre-disk-edit) state into baseline, clear current comments, then swap
+// in the freshly-read disk content. No second confirm dialog — the
+// safety modal already collected user intent.
+function reloadByPromoting() {
+  if (!pendingReload || !currentFile) return;
+  const { fname, newText, newHandle } = pendingReload;
+  const cur = annotations[fname] || [];
+
+  baselines[fname] = {
+    content: currentFile.content,
+    annotations: cur.slice(),
+    timestamp: Date.now(),
+  };
+  delete annotations[fname];
+  persistBaselines();
+  persistAnnotations();
+
+  currentFile = { name: fname, handle: newHandle, content: newText };
+  hideReloadSafetyModal();
+  refreshTabAvailability();
+  renderActiveTab();
+  flashReloadButton('Locked + loaded ✓');
+}
+
+function reloadByDiscarding() {
+  if (!pendingReload || !currentFile) return;
+  const { fname, newText, newHandle } = pendingReload;
+  delete annotations[fname];
+  persistAnnotations();
+  currentFile = { name: fname, handle: newHandle, content: newText };
+  hideReloadSafetyModal();
+  refreshTabAvailability();
+  renderActiveTab();
+  flashReloadButton('Reloaded (comments discarded)');
 }
 
 function flashReloadButton(label) {
@@ -2576,6 +2898,7 @@ function flashReloadButton(label) {
 
 async function promoteToNextRound() {
   if (!currentFile || !isInteractiveTab()) return;
+  if (isPlanFile(currentFile.name)) return;  // plans don't have rounds
   const fname = currentFile.name;
   const cur = annotations[fname] || [];
   const prev = baselines[fname];
@@ -2618,7 +2941,7 @@ async function promoteToNextRound() {
   // edited the file, user wants to see the new version. Without this,
   // they'd have to refresh the whole browser tab to pick up the changes.
   try {
-    const handle = await directoryHandle.getFileHandle(fname);
+    const handle = await resolveFileHandle(fname);
     const file = await handle.getFile();
     currentFile = { name: fname, handle, content: await file.text() };
   } catch (e) {
@@ -2652,7 +2975,16 @@ function bindUIEvents() {
   };
   document.getElementById('copy-clipboard').onclick = copyToClipboard;
   document.getElementById('save-file').onclick = saveAsFile;
-  document.getElementById('clear-all').onclick = clearAllAnnotations;
+
+  document.getElementById('clear-comments').onclick = showClearCommentsModal;
+  document.getElementById('close-clear').onclick = hideClearCommentsModal;
+  document.getElementById('clear-cancel').onclick = hideClearCommentsModal;
+  document.getElementById('clear-confirm').onclick = confirmClearComments;
+
+  document.getElementById('close-reload-safety').onclick = hideReloadSafetyModal;
+  document.getElementById('reload-cancel').onclick = hideReloadSafetyModal;
+  document.getElementById('reload-promote').onclick = reloadByPromoting;
+  document.getElementById('reload-discard').onclick = reloadByDiscarding;
 
   document.getElementById('close-rules').onclick = hideRulesEditor;
 
@@ -2702,6 +3034,8 @@ function bindUIEvents() {
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return;
     if (!document.getElementById('comment-popup').hidden) hideCommentPopup();
+    else if (!document.getElementById('reload-safety-modal').hidden) hideReloadSafetyModal();
+    else if (!document.getElementById('clear-comments-modal').hidden) hideClearCommentsModal();
     else if (!document.getElementById('export-modal').hidden) {
       document.getElementById('export-modal').hidden = true;
     } else if (!document.getElementById('rules-modal').hidden) {

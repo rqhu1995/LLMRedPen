@@ -249,6 +249,16 @@ comments so the next time you reopen, the *Diff* tab shows exactly
 what changed and the *Prev* tab shows what you sent. New comments go
 on the new file; the previous round stays read-only as a record.
 
+If your writing agent produces intermediate plan files (e.g. a
+per-subsection imitation plan it wants you to approve before it
+touches the manuscript), put them under a `plans/` subfolder. The
+viewer lists them in a separate *Plans* group in the sidebar; they're
+annotatable + reloadable but don't participate in the round model.
+A one-time *workflow setup* prompt for the agent — including the
+plans/ convention and the formatting constraints the viewer's
+reading-view stripper expects — lives at
+[`docs/agent-workflow.md`](docs/agent-workflow.md).
+
 ---
 
 ## How it works
@@ -346,7 +356,8 @@ llm-redpen/
 ├── style.css         # styles
 ├── favicon.svg       # red-pen-on-yellow icon
 ├── docs/
-│   └── agent-prompt.md   # prompt explaining the §S ¶N anchor format to LLMs
+│   ├── agent-prompt.md     # per-batch prompt: §S ¶N anchor format
+│   └── agent-workflow.md   # one-time setup: plans/ subfolder + metadata rules
 └── README.md
 ```
 

@@ -112,6 +112,27 @@ html, body {
 .file-link:hover { background: rgba(0,0,0,0.04); }
 .file-link.active { background: var(--accent-soft); color: var(--accent); font-weight: 500; }
 
+/* Plan-file entries: same hit area, slightly muted color so the eye can
+   tell at a glance which group an item belongs to even when scanning. */
+.file-link.plan { color: var(--fg-muted); }
+.file-link.plan.active { color: var(--accent); }
+
+/* Sidebar group label — small caps style above each section. */
+.file-group-title {
+  margin: 14px 18px 4px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--fg-muted);
+}
+.file-group-title:first-child { margin-top: 6px; }
+
+/* Tab bar in plan-file mode: hide the Prev/Diff/Current group and the
+   Proceed button, leaving Reload + Show metadata visible. */
+#tab-bar.plan-file .tab-group { display: none; }
+#tab-bar.plan-file #proceed-next-round { display: none; }
+
 #stranded-section {
   border-top: 1px solid var(--border);
   padding: 10px 18px 12px;
@@ -379,6 +400,107 @@ html, body {
   font-style: italic;
   text-align: center;
   margin-top: 60px;
+}
+
+/* === Self-review panel (top of Diff tab) ===
+   One row per subsection. Default collapsed; click summary to expand. */
+.self-review-panel {
+  margin-bottom: 28px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #fcfaf4;
+  overflow: hidden;
+}
+
+.self-review-panel-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  background: #f6efde;
+  border-bottom: 1px solid var(--border);
+  font-family: var(--sans);
+  font-size: 12px;
+  color: #6a4500;
+}
+
+.srp-title {
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.srp-count { color: var(--fg-muted); font-weight: 400; }
+
+.srp-toggle-all {
+  margin-left: auto;
+  font-size: 11px;
+  padding: 2px 8px;
+  background: transparent;
+  color: #6a4500;
+  border: 1px solid #d9c89f;
+  border-radius: 3px;
+  cursor: pointer;
+  font-family: var(--sans);
+}
+.srp-toggle-all:hover { background: rgba(154, 124, 30, 0.08); }
+
+details.self-review-row {
+  border-top: 1px solid #ebe0c0;
+}
+details.self-review-row:first-of-type { border-top: 0; }
+
+details.self-review-row summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  cursor: pointer;
+  font-family: var(--sans);
+  font-size: 13px;
+  user-select: none;
+}
+details.self-review-row summary::-webkit-details-marker { display: none; }
+details.self-review-row summary:hover { background: rgba(154, 124, 30, 0.05); }
+
+.sr-num {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #6a4500;
+  min-width: 38px;
+}
+
+.sr-title { flex: 1; color: var(--fg); }
+
+.sr-chev {
+  font-size: 11px;
+  color: var(--fg-muted);
+  transition: transform 0.15s ease;
+}
+details[open] .sr-chev { transform: rotate(180deg); }
+
+.self-review-body {
+  padding: 4px 18px 14px 52px;  /* align with summary title indent */
+  font-family: var(--serif);
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--fg);
+}
+
+.self-review-body ul,
+.self-review-body ol {
+  margin: 4px 0;
+  padding-left: 22px;
+}
+
+.self-review-body li { margin: 4px 0; }
+
+.self-review-body strong {
+  font-family: var(--sans);
+  font-size: 13px;
+  color: #6a4500;
 }
 
 #comments-pane.diff-hidden #comments-list,
@@ -742,6 +864,107 @@ button.danger:hover:not(:disabled) {
 }
 
 .modal-content.wide { width: 900px; }
+.modal-content.narrow { width: 460px; }
+
+/* Clear-comments modal: tighter, simpler. */
+.clear-help {
+  margin: 0 0 14px;
+  color: var(--fg-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.clear-scope {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.clear-scope label {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+
+.clear-scope label:hover { background: #fafafa; }
+
+.clear-scope input[type="radio"] {
+  margin-top: 3px;
+  flex-shrink: 0;
+}
+
+.clear-scope input[type="radio"]:checked + span {
+  font-weight: 500;
+}
+
+.clear-scope input[type="radio"]:disabled + span {
+  opacity: 0.45;
+}
+
+.clear-scope .muted {
+  color: var(--fg-muted);
+  font-weight: 400;
+  margin-left: 6px;
+}
+
+/* Reload safety modal: three stacked action buttons, each with a title +
+   subtitle that explains the consequence. Visual weight ranks
+   Promote > Discard > Cancel (Promote is the default safe action). */
+.reload-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.reload-choice {
+  width: 100%;
+  padding: 12px 14px;
+  text-align: left;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: #fff;
+  cursor: pointer;
+  font-family: var(--sans);
+  line-height: 1.4;
+  transition: background 0.12s, border-color 0.12s;
+}
+
+.reload-choice:hover { background: #fafafa; border-color: var(--fg-muted); }
+
+.reload-choice.primary {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+.reload-choice.primary:hover { filter: brightness(0.97); }
+
+.reload-choice.danger {
+  border-color: rgba(192, 57, 43, 0.4);
+}
+.reload-choice.danger:hover {
+  background: rgba(192, 57, 43, 0.04);
+  border-color: var(--danger, #c0392b);
+}
+.reload-choice.danger .reload-choice-title { color: var(--danger, #c0392b); }
+
+.reload-choice-title {
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--fg);
+  margin-bottom: 4px;
+}
+
+.reload-choice-sub {
+  font-size: 12px;
+  color: var(--fg-muted);
+}
+
+.reload-choice.primary .reload-choice-title { color: var(--accent); }
 .modal-content.tall { max-height: 90vh; }
 .modal-content.fullscreen {
   width: 95vw;
@@ -1311,10 +1534,25 @@ table.te-grid td.te-axis button:hover {
 #comments-pane-footer {
   padding: 12px 18px;
   border-top: 1px solid var(--border);
+  display: flex;
+  gap: 8px;
 }
 
 #comments-pane-footer button {
-  width: 100%;
+  flex: 1;
+  min-width: 0;
+}
+
+/* "Clear comments…" is destructive — muted gray by default, danger red
+   on hover. Distinct from the primary Export action without screaming. */
+#clear-comments {
+  color: var(--fg-muted);
+  border-color: var(--border);
+}
+#clear-comments:hover:not(:disabled) {
+  color: var(--danger, #c0392b);
+  border-color: var(--danger, #c0392b);
+  background: rgba(192, 57, 43, 0.04);
 }
 
 #comments-list .empty {

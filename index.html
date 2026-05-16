@@ -61,6 +61,7 @@
       <div id="comments-list"></div>
       <footer id="comments-pane-footer">
         <button id="export-comments" disabled>Export…</button>
+        <button id="clear-comments" disabled>Clear comments…</button>
       </footer>
     </aside>
   </div>
@@ -92,7 +93,73 @@
       <footer class="modal-footer">
         <button id="copy-clipboard" class="primary">Copy to clipboard</button>
         <button id="save-file">Save as file…</button>
-        <button id="clear-all" class="danger">Delete</button>
+      </footer>
+    </div>
+  </div>
+
+  <!-- Reload safety modal: shown when Reload detects that the disk version
+       differs from what's in memory AND there are pending current-round
+       comments. Without this dialog, hitting Reload would silently
+       overwrite the in-memory version + leave the comments dangling
+       against unfamiliar text. -->
+  <div id="reload-safety-modal" class="modal" hidden>
+    <div class="modal-content narrow">
+      <header class="modal-header">
+        <h2>The file changed on disk</h2>
+        <button class="modal-close" id="close-reload-safety" aria-label="Close">×</button>
+      </header>
+      <div class="modal-body">
+        <p class="clear-help">
+          <span id="reload-safety-summary">"file.md" has been edited since you opened it</span>,
+          and you have <strong id="reload-safety-count">0 comments</strong> on this round
+          that aren't anchored to the new version yet. How do you want to
+          handle this?
+        </p>
+        <div class="reload-choices">
+          <button id="reload-promote" class="primary reload-choice">
+            <div class="reload-choice-title">Lock this round, then load the new version</div>
+            <div class="reload-choice-sub">Equivalent to clicking Proceed first. Your current comments + the version you saw become the new <em>Prev</em>; the new file becomes <em>Current</em>; <em>Diff</em> shows what changed.</div>
+          </button>
+          <button id="reload-discard" class="danger reload-choice">
+            <div class="reload-choice-title">Discard my comments and load the new version</div>
+            <div class="reload-choice-sub">Use this if your current-round comments are no longer useful and you just want to start fresh against the new file.</div>
+          </button>
+          <button id="reload-cancel" class="reload-choice">
+            <div class="reload-choice-title">Cancel — keep the in-memory version</div>
+            <div class="reload-choice-sub">Don't touch anything. The file on disk stays out of sync with what you're looking at until you decide.</div>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Clear-comments modal: deletion lives here, NOT in the export modal,
+       so the user can't confuse "export" with "destroy". Scope picker
+       spells out the comment counts so there is no ambiguity. -->
+  <div id="clear-comments-modal" class="modal" hidden>
+    <div class="modal-content narrow">
+      <header class="modal-header">
+        <h2>Clear comments</h2>
+        <button class="modal-close" id="close-clear" aria-label="Close">×</button>
+      </header>
+      <div class="modal-body">
+        <p class="clear-help">This permanently deletes the selected comments. There is no undo.</p>
+        <div class="clear-scope">
+          <label>
+            <input type="radio" name="clear-scope" value="current" checked>
+            <span>Comments on <strong id="clear-scope-current-name">this file</strong>
+              <span id="clear-scope-current-count" class="muted"></span></span>
+          </label>
+          <label>
+            <input type="radio" name="clear-scope" value="all">
+            <span>Comments in every file in this folder
+              <span id="clear-scope-all-count" class="muted"></span></span>
+          </label>
+        </div>
+      </div>
+      <footer class="modal-footer">
+        <button id="clear-cancel">Cancel</button>
+        <button id="clear-confirm" class="danger">Delete</button>
       </footer>
     </div>
   </div>
