@@ -178,12 +178,14 @@ the prose flows uninterrupted (toggle *Show metadata* to see them).
    If you approved: the agent transplants the plan into the
    manuscript and attaches its self-review block.
 
-5. You open the manuscript in LLMRedPen, click "Proceed to the next
-   round" (or use Reload), then read the Diff tab — agent's
-   self-review on top, textual diff below.
+5. You open the manuscript in LLMRedPen and read the new content.
+   On first view there's nothing to diff against yet — exporting
+   comments in the next step is what sets the baseline.
 
-6. You annotate the manuscript, export, agent revises. When this
-   subsection is good, you move to the next one and the cycle
+6. You annotate the manuscript, click Export → Copy (which also
+   advances the round automatically). Agent revises; Reload pulls
+   the new version into Current and Diff shows what changed. When
+   the subsection is good, move to the next one and the cycle
    restarts at step 1.
 ```
 
@@ -257,11 +259,13 @@ loop explicitly:
   2. Annotate as you go — text selections, paragraph notes,
      general notes.
   3. Click Export → Copy → paste into your agent's chat,
-     together with "apply these comments to <file>".
+     together with "apply these comments to <file>". Copying also
+     advances the round: your comments + the version you saw
+     move into the Prev slot, and the Current annotation buffer
+     resets to empty.
   4. The agent edits the file on disk.
-  5. Click "Proceed to the next round". The file + your comments
-     are snapshotted into Prev. The file is re-read from disk into
-     Current. The Diff tab lights up with the agent's changes.
+  5. Click ↻ Reload (or refresh the page) to pull the agent's
+     edits into Current. Diff now shows what changed.
 
   Round N+1
   ─────────
@@ -339,7 +343,9 @@ When you open a root manuscript file:
 | `Current →` | The current file content + this round's in-progress comments | yes |
 
 *Prev* and *Diff* are disabled on the first round (no baseline exists
-yet). Clicking *Proceed to the next round* creates the first baseline.
+yet). The first Export → Copy creates the first baseline as a side
+effect of advancing the round; the explicit *Proceed to the next round*
+button does the same.
 
 When you open a subfolder file, the tab group is hidden — only the
 editable Current view shows, with *Reload* and *Show metadata* still
@@ -400,18 +406,25 @@ alias redpen='bun ~/tools/llm-redpen/server.ts'
 6. **Export.** *Export…* in the right pane gives you the full batch
    as plain text, with a scope toggle (*This file* vs *All files in
    this folder*) and a *Copy to clipboard* / *Save as file…* footer.
+   **Copy or Save also advances the round** — the comments you send
+   move into the Prev slot, and the Current annotation buffer
+   starts blank.
 7. **Hand off** to your agent (see [Working with an LLM agent](#working-with-an-llm-agent)).
-8. **Proceed.** When the agent has edited the file on disk, click
-   *Proceed to the next round*. Diff lights up with what changed;
-   Prev shows what you sent.
+8. **Refresh.** When the agent has edited the file on disk, click
+   *↻ Reload* (or just refresh the page). Diff lights up with what
+   changed; Prev shows what you sent. The explicit *Proceed to the
+   next round* button is still there for the case where you sent
+   comments to the agent through some channel other than Export.
 
-### Reload from disk vs. Proceed
+### Reload safety dialog
 
 `↻ Reload` re-reads the current file from disk without refreshing the
 whole page — useful for checking "is the agent done editing yet?"
-while you keep your session state intact. If the disk version differs
-from what you've been annotating AND you have unfinished comments,
-a safety dialog appears with three choices:
+while you keep your session state intact. After Export auto-advanced
+the round (Current annotation buffer is empty) Reload just swaps in
+the new version silently. The safety dialog only appears if you have
+unfinished comments AND the disk version has changed, which is rare
+now that Export bundles the advance step:
 
 - **Lock this round, then load the new version** *(default)* — equivalent
   to clicking Proceed first. Your comments + the version you saw become
@@ -421,8 +434,8 @@ a safety dialog appears with three choices:
   fresh against the new file.
 - **Cancel** — don't touch anything.
 
-This means you can never silently lose a round by forgetting to click
-Proceed before the agent edits the file.
+This is the backstop for the rare case where comments somehow lingered
+into the next round (e.g., the agent edited the file on its own).
 
 ### Clearing comments
 
@@ -476,9 +489,9 @@ A round-N handoff to the agent looks like:
 Please apply these comments to introduction-draft.md.
 ```
 
-The agent edits the file on disk → you come back to the viewer → click
-*Proceed to the next round* (or use *Reload* with its safety dialog) →
-the Diff tab now shows the agent's revisions.
+The agent edits the file on disk → you come back to the viewer →
+click *↻ Reload* (the round was already advanced when you clicked
+Export → Copy) → the Diff tab now shows the agent's revisions.
 
 ---
 
@@ -520,10 +533,12 @@ the bullets leak into the reading view.
   timestamp}` per file. The directory handle lives in `IndexedDB`
   (DB `mda`, store `handles`, key `lastFolder`) so a refresh restores
   the folder *and* auto-reopens the last file you had open.
-- **Round model, not a VCS.** *Proceed to the next round* snapshots the
-  current file content + this round's comments into a single
-  previous-round slot, then re-reads the file from disk so Current
-  reflects the agent's latest edit. Only one prior round is kept;
+- **Round model, not a VCS.** Exporting comments (Copy or Save) is
+  also the round-advance step: it snapshots the current file content
+  + this round's comments into a single previous-round slot, then
+  re-reads the file from disk so Current reflects the agent's latest
+  edit. The same snapshot can also be triggered manually via
+  *Proceed to the next round*. Only one prior round is kept;
   promoting again overwrites it.
 - **Diff.** Word-level inline diff via
   [jsdiff](https://github.com/kpdecker/jsdiff). Operates on the
@@ -551,10 +566,10 @@ the bullets leak into the reading view.
 - **Whole-paragraph rewrite mid-round.** If the agent rewrites a
   passage past the point where the locator can find it, the comment's
   highlight doesn't render — but the card still shows in the right
-  pane with the stored quote. The intended workflow is *Proceed*
-  before the agent edits, so each round's comments stay paired with
-  the version they were written against. The Reload safety dialog
-  catches the common "I forgot to Proceed" case.
+  pane with the stored quote. The intended workflow has Export
+  auto-advance the round before the agent edits, so each round's
+  comments stay paired with the version they were written against;
+  the Reload safety dialog is a backstop in case anything lingers.
 - **One prior round only.** Promoting again overwrites the previous
   baseline. If you need a paper trail across many rounds, save each
   round's exported comments to a `.txt` and keep them yourself.

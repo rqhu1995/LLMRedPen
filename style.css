@@ -1071,6 +1071,21 @@ button.danger:hover:not(:disabled) {
   font-size: 12px;
 }
 
+.export-hint {
+  margin: 0;
+  padding: 10px 24px 12px;
+  background: #fffbea;
+  border-bottom: 1px solid var(--border);
+  color: #6a5b1f;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.export-hint strong {
+  color: #6a4f00;
+  font-weight: 600;
+}
+
 .modal-body.editor-body {
   display: grid;
   grid-template-columns: 1fr 1fr;

@@ -47,7 +47,7 @@
         <div class="tab-spacer"></div>
         <button id="toggle-metadata" class="reload-btn" aria-pressed="false" title="Show or hide draft metadata: leading blockquote front-matter and HTML comment blocks. Hidden by default so the reading view stays clean and §S ¶N numbering counts only real paragraphs.">Show metadata</button>
         <button id="reload-current-file" class="reload-btn" title="Re-read this file from disk (use after the agent has edited it, without refreshing the whole page)">&#8635; Reload</button>
-        <button id="proceed-next-round" class="proceed-btn" disabled title="Lock the current version + your comments as the new previous-round baseline. Discards the existing previous round and clears your current comments.">Proceed to the next round</button>
+        <button id="proceed-next-round" class="proceed-btn" disabled title="Lock the current version + your comments as the new previous-round baseline. Export → Copy/Save now does this automatically; use this button only if you sent comments to the agent some other way.">Proceed to the next round</button>
       </div>
       <article id="rendered" hidden></article>
       <div id="diff-view" class="diff-view" hidden></div>
@@ -90,6 +90,11 @@
         <label><input type="radio" name="export-scope" value="current" checked> This file <span id="export-scope-current-name" class="muted"></span></label>
         <label><input type="radio" name="export-scope" value="all"> All files in this folder</label>
       </div>
+      <p class="export-hint">
+        Copying or saving also <strong>advances the round</strong> for every file in scope —
+        the comments you send move into the prev-round baseline, and the current round
+        starts blank. Skips files with zero comments and any subfolder file (plans).
+      </p>
       <div class="modal-body">
         <pre id="export-text"></pre>
       </div>

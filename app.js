@@ -1961,6 +1961,13 @@ function getExportScope() {
   return checked ? checked.value : (currentFile ? 'current' : 'all');
 }
 
+function scopeHasAnnotations(scope) {
+  if (scope === 'current') {
+    return !!(currentFile && (annotations[currentFile.name] || []).length);
+  }
+  return Object.keys(annotations).some((f) => (annotations[f] || []).length);
+}
+
 function compareByAnchor(a, b) {
   // Sort order: general notes first (no anchor to sort by), then anchored
   // comments by §S ¶N, then by creation time as the tiebreaker.
@@ -2010,21 +2017,28 @@ function renderExportList() {
 }
 
 async function copyToClipboard() {
-  const text = buildExportText(getExportScope());
+  const scope = getExportScope();
+  if (!scopeHasAnnotations(scope)) {
+    alert('Nothing to copy — no comments in scope.');
+    return;
+  }
+  const text = buildExportText(scope);
   try {
     await navigator.clipboard.writeText(text);
-    const btn = document.getElementById('copy-clipboard');
-    const orig = btn.textContent;
-    btn.textContent = 'Copied ✓';
-    setTimeout(() => { btn.textContent = orig; }, 1500);
   } catch (e) {
     alert('Copy failed: ' + e.message);
+    return;
   }
+  await flashExportAndAdvance('copy-clipboard', 'Copied', scope);
 }
 
 async function saveAsFile() {
   if (!directoryHandle) return;
   const scope = getExportScope();
+  if (!scopeHasAnnotations(scope)) {
+    alert('Nothing to save — no comments in scope.');
+    return;
+  }
   const text = buildExportText(scope);
   const base = (scope === 'current' && currentFile)
     ? currentFile.name.replace(/\.md$/i, '').replace(/\//g, '-')
@@ -2043,14 +2057,28 @@ async function saveAsFile() {
     const writable = await handle.createWritable();
     await writable.write(text);
     await writable.close();
-
-    const btn = document.getElementById('save-file');
-    const orig = btn.textContent;
-    btn.textContent = 'Saved ✓';
-    setTimeout(() => { btn.textContent = orig; }, 1500);
   } catch (e) {
     if (e.name !== 'AbortError') alert('Save failed: ' + e.message);
+    return;
   }
+  await flashExportAndAdvance('save-file', 'Saved', scope);
+}
+
+// Shared post-action: promote everything in scope, then update the
+// button to confirm both the export AND the round advance, and refresh
+// the modal preview so the user can see annotations are gone.
+async function flashExportAndAdvance(btnId, verb, scope) {
+  const promoted = await silentPromoteScope(scope);
+  const btn = document.getElementById(btnId);
+  if (!btn) return;
+  const orig = btn.dataset.label || btn.textContent;
+  btn.dataset.label = orig;
+  btn.textContent = promoted.length > 0
+    ? `${verb} & advanced ✓ (${promoted.length} file${promoted.length > 1 ? 's' : ''})`
+    : `${verb} ✓`;
+  setTimeout(() => { btn.textContent = btn.dataset.label || orig; }, 2200);
+  // Re-render the preview so the now-empty annotation buckets are visible.
+  if (!document.getElementById('export-modal').hidden) renderExportList();
 }
 
 // ============================== Clear comments modal ================
@@ -3381,12 +3409,94 @@ function flashReloadButton(label) {
 
 // ============================== Promote to next round =================
 //
-// Snapshots the current file content + this round's comments into the
-// previous-round slot, then clears this round's comments. Exists so the
-// user can mark "I'm done with this review pass; lock it in as what I
-// sent to the agent". Next time they open the file (after the agent has
-// edited it on disk), the Diff tab will show what changed.
+// Snapshots a file's content + this round's comments into the previous-
+// round slot, then clears that round's comments. The user marks "I'm
+// done with this review pass; lock it in as what I sent to the agent".
+// Next time they open the file (after the agent has edited it on disk),
+// the Diff tab will show what changed.
+//
+// Two entry points:
+//   - promoteToNextRound(): the explicit Proceed button. Confirms first
+//     because it's a destructive action with no surrounding context.
+//   - silentPromoteScope(): bundled into Copy / Save in the export modal.
+//     No confirm — the act of sending comments to the agent IS the
+//     consent. The modal shows a hint up front so the user knows.
 
+// Read the file's content for the baseline snapshot. Uses in-memory
+// currentFile.content when possible (avoids a disk roundtrip and
+// preserves whatever the user actually saw and annotated against);
+// otherwise reads from disk.
+async function snapshotContentFor(fname) {
+  if (currentFile && currentFile.name === fname) return currentFile.content;
+  try {
+    const handle = await resolveFileHandle(fname);
+    const file = await handle.getFile();
+    return await file.text();
+  } catch (e) {
+    console.warn('[redpen] snapshot read failed', fname, e);
+    return null;
+  }
+}
+
+// One file's snapshot work, with no policy checks beyond "is it a plan?"
+// and "can we read its content?". Caller decides whether the file is
+// worth promoting at all (e.g., bundled-export skips zero-comment files
+// while the explicit Proceed button allows them).
+async function snapshotOneFileToBaseline(fname) {
+  if (!fname || isPlanFile(fname)) return false;
+  const content = await snapshotContentFor(fname);
+  if (content === null) return false;
+  const cur = annotations[fname] || [];
+  baselines[fname] = {
+    content,
+    annotations: cur.slice(),
+    timestamp: Date.now(),
+  };
+  delete annotations[fname];
+  return true;
+}
+
+// Shared persist + re-read + UI refresh, after one or more files have
+// been snapshotted into the baseline slot.
+async function finalizePromote(promotedFiles) {
+  if (promotedFiles.length === 0) return;
+  persistAnnotations();
+  persistBaselines();
+  if (currentFile && promotedFiles.includes(currentFile.name)) {
+    try {
+      const handle = await resolveFileHandle(currentFile.name);
+      const file = await handle.getFile();
+      currentFile = { name: currentFile.name, handle, content: await file.text() };
+    } catch (e) {
+      console.warn('[redpen] re-read after promote failed', e);
+    }
+  }
+  refreshTabAvailability();
+  renderActiveTab();
+}
+
+// Bundled into Copy / Save in the export modal. Promotes every file in
+// scope that actually has comments. No confirm — the act of sending the
+// comments IS the consent; the modal shows a hint up front so the user
+// knows.
+async function silentPromoteScope(scope) {
+  const candidates = scope === 'current'
+    ? (currentFile ? [currentFile.name] : [])
+    : Object.keys(annotations);
+
+  const promoted = [];
+  for (const fname of candidates) {
+    if (isPlanFile(fname)) continue;
+    const cur = annotations[fname] || [];
+    if (cur.length === 0) continue;
+    if (await snapshotOneFileToBaseline(fname)) promoted.push(fname);
+  }
+  await finalizePromote(promoted);
+  return promoted;
+}
+
+// Explicit Proceed button. Current file only, confirms first because the
+// action runs outside any surrounding export context.
 async function promoteToNextRound() {
   if (!currentFile || !isInteractiveTab()) return;
   if (isPlanFile(currentFile.name)) return;  // plans don't have rounds
@@ -3415,35 +3525,9 @@ async function promoteToNextRound() {
   }
   if (!confirm(msg)) return;
 
-  // Step 1: snapshot what the user just reviewed (the in-memory content
-  // they saw + their comments) into the previous-round slot.
-  baselines[fname] = {
-    content: currentFile.content,
-    annotations: cur.slice(),
-    timestamp: Date.now(),
-  };
-  delete annotations[fname];
-  persistBaselines();
-  persistAnnotations();
-
-  // Step 2: re-read the file from disk so the Current tab reflects what's
-  // there *now*. This is the whole point of Proceed-to-next-round in the
-  // common workflow: user has handed comments to the agent, agent has
-  // edited the file, user wants to see the new version. Without this,
-  // they'd have to refresh the whole browser tab to pick up the changes.
-  try {
-    const handle = await resolveFileHandle(fname);
-    const file = await handle.getFile();
-    currentFile = { name: fname, handle, content: await file.text() };
-  } catch (e) {
-    console.warn('[redpen] re-read after promote failed', e);
-    // Fall through with the in-memory content. Prev/Diff still work.
+  if (await snapshotOneFileToBaseline(fname)) {
+    await finalizePromote([fname]);
   }
-
-  // Stay on Current; it's now empty of comments and (likely) showing the
-  // agent's revised content. Prev/Diff are now available.
-  refreshTabAvailability();
-  renderActiveTab();
 }
 
 // ============================== UI event bindings ====================
