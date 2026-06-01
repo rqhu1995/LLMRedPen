@@ -1249,7 +1249,7 @@ function renderTeXWithAnchors(rendered, text) {
   for (const block of blocks) {
     let el = null;
     if (block.type === 'heading') {
-      el = document.createElement(`h${Math.min(6, Math.max(2, block.level))}`);
+      el = document.createElement(`h${clampHeadingLevel(block.level)}`);
       el.textContent = block.text;
     } else if (block.type === 'code') {
       el = document.createElement('pre');
@@ -1264,10 +1264,13 @@ function renderTeXWithAnchors(rendered, text) {
   numberSectionsAndParagraphs(rendered);
 }
 
+function clampHeadingLevel(level) {
+  return Math.min(6, Math.max(2, level));
+}
+
 function parseTeXBlocks(text) {
   const blocks = [];
   const lines = (text || '').replace(/\r\n?/g, '\n').split('\n');
-  const headingRe = /^\\(section|subsection|subsubsection|paragraph|subparagraph)\*?\{(.+)\}\s*$/;
   const envStartRe = /^\\begin\{([^}]+)\}\s*$/;
   const envEndRe = /^\\end\{([^}]+)\}\s*$/;
   const headingLevel = {
@@ -1298,7 +1301,7 @@ function parseTeXBlocks(text) {
   };
 
   for (const rawLine of lines) {
-    const line = rawLine.replace(/\s+$/g, '');
+    const line = rawLine.trimEnd();
     const trimmed = line.trim();
 
     if (env) {
@@ -1315,13 +1318,13 @@ function parseTeXBlocks(text) {
 
     if (trimmed.startsWith('%')) continue;
 
-    const headingMatch = trimmed.match(headingRe);
-    if (headingMatch) {
+    const heading = parseTeXHeadingLine(trimmed);
+    if (heading) {
       flushPara();
       blocks.push({
         type: 'heading',
-        level: headingLevel[headingMatch[1]] || 2,
-        text: headingMatch[2].trim(),
+        level: headingLevel[heading.kind] || 2,
+        text: heading.text,
       });
       continue;
     }
@@ -1340,6 +1343,38 @@ function parseTeXBlocks(text) {
   flushPara();
   flushEnv();
   return blocks;
+}
+
+function parseTeXHeadingLine(line) {
+  const m = line.match(/^\\(section|subsection|subsubsection|paragraph|subparagraph)\*?\{/);
+  if (!m) return null;
+  const kind = m[1];
+  let depth = 1;
+  let i = m[0].length;
+  let body = '';
+  for (; i < line.length; i++) {
+    const ch = line.charAt(i);
+    const prev = i > 0 ? line.charAt(i - 1) : '';
+    if (ch === '{' && prev !== '\\') {
+      depth++;
+      body += ch;
+      continue;
+    }
+    if (ch === '}' && prev !== '\\') {
+      depth--;
+      if (depth === 0) {
+        i++;
+        break;
+      }
+      body += ch;
+      continue;
+    }
+    body += ch;
+  }
+  if (depth !== 0) return null;
+  const rest = line.slice(i).trim();
+  if (rest && !rest.startsWith('%')) return null;
+  return { kind, text: body.trim() };
 }
 
 function numberSectionsAndParagraphs(rendered) {
