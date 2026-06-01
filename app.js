@@ -1354,13 +1354,12 @@ function parseTeXHeadingLine(line) {
   let body = '';
   for (; i < line.length; i++) {
     const ch = line.charAt(i);
-    const prev = i > 0 ? line.charAt(i - 1) : '';
-    if (ch === '{' && prev !== '\\') {
+    if (ch === '{' && !isEscapedByBackslashes(line, i)) {
       depth++;
       body += ch;
       continue;
     }
-    if (ch === '}' && prev !== '\\') {
+    if (ch === '}' && !isEscapedByBackslashes(line, i)) {
       depth--;
       if (depth === 0) {
         i++;
@@ -1375,6 +1374,14 @@ function parseTeXHeadingLine(line) {
   const rest = line.slice(i).trim();
   if (rest && !rest.startsWith('%')) return null;
   return { kind, text: body.trim() };
+}
+
+function isEscapedByBackslashes(line, idx) {
+  let slashCount = 0;
+  for (let i = idx - 1; i >= 0 && line.charAt(i) === '\\'; i--) {
+    slashCount++;
+  }
+  return (slashCount % 2) === 1;
 }
 
 function numberSectionsAndParagraphs(rendered) {
