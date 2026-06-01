@@ -19,6 +19,7 @@ const TYPES: Record<string, string> = {
   ".json": "application/json; charset=utf-8",
   ".svg":  "image/svg+xml",
   ".md":   "text/markdown; charset=utf-8",
+  ".tex":  "application/x-tex; charset=utf-8",
 };
 
 function contentType(path: string): string {

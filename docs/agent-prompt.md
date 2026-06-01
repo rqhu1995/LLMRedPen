@@ -10,22 +10,25 @@ surrounding text is for you, the user.
 ````
 # Annotation anchor format (read first)
 
-The comments below are exported from a Markdown reading tool that
+The comments below are exported from a Markdown/TeX reading tool that
 prefixes each comment with a `§S ¶N` anchor. **These anchors are NOT
-in the source Markdown** — they are computed by the viewer from
+in the source file** — they are computed by the viewer from
 structural position. Use this rule to locate each anchor in the file:
 
 ## Rule
 
-1. The single top-level `# H1` heading is treated as the file title
-   and **skipped** from section counting.
-2. Every subsequent heading of any level (`##`, `###`, `####`, ...)
-   in document order is **§1, §2, §3, ...** — flat numbering, no
-   nesting, no regard for the heading's own internal number
-   (e.g. "### 7.1 Structure" is NOT §7.1).
+1. For Markdown: a single top-level `# H1` title is **skipped** from
+   section counting.
+2. For Markdown, every subsequent heading (`##`, `###`, `####`, ...)
+   is section-numbered in flat document order: **§1, §2, §3, ...**.
+   For TeX, every `\section{...}`, `\subsection{...}`,
+   `\subsubsection{...}`, `\paragraph{...}`, and
+   `\subparagraph{...}` is numbered the same flat way.
 3. Within each section, every paragraph / list / blockquote / code
    block / table is **¶1, ¶2, ¶3, ...** in source order. Horizontal
-   rules (`---`) do not count as paragraphs.
+   rules (`---`) do not count as paragraphs. In TeX, paragraph blocks
+   are contiguous prose chunks between blank lines or structural
+   commands/environments.
 
 ## Example mapping for `introduction-merged.md`
 
@@ -70,17 +73,17 @@ structural position. Use this rule to locate each anchor in the file:
 
 ## Why this prompt matters
 
-The viewer's `§S ¶N` markers don't appear in the source `.md` file —
+The viewer's `§S ¶N` markers don't appear in the source `.md` / `.tex` file —
 they are a display convenience computed each render. Without this
 prompt, an agent will often look for the literal symbols in the file,
 fail to find them, and either ask the user where they are or skip the
 comment entirely. With this prompt, the agent maps each anchor back to
 the corresponding paragraph in the source and edits in place.
 
-The example block uses `introduction-merged.md` because that's a
-common starting case (single `# H1` title, then several `###`
-subsections). For files with a different heading structure (e.g.
-mixing `##` and `###`), the rule still holds: every heading after the
-title is one flat-numbered section. You can update the example block
-to reflect the actual structure of your file if you want, but the rule
-text is enough on its own.
+The example block uses `introduction-merged.md` because that's a common
+starting Markdown case (single `# H1` title, then several `###`
+subsections). For files with a different heading structure — Markdown
+or TeX — the rule still holds: structural headings are flat-numbered in
+document order. You can update the example block to reflect the actual
+structure of your file if you want, but the rule text is enough on its
+own.
