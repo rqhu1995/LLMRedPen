@@ -284,7 +284,7 @@ writes that round's comments to a `.txt` you can archive yourself.
 
 ## Folder layout the viewer expects
 
-Point the viewer at any folder of `.md` files. A typical paper layout:
+Point the viewer at any folder of `.md` / `.tex` files. A typical paper layout:
 
 ```
 paper/
@@ -318,7 +318,7 @@ folders are walked recursively to a few levels — so
 
 | Treatment | Where | Tab bar | Proceed button | Annotate / Export | Reload |
 |---|---|---|---|---|---|
-| Full (round model) | Root `.md` files + anything under `manuscript/` | Prev / Diff / Current | yes | yes | yes |
+| Full (round model) | Root `.md` / `.tex` files + anything under `manuscript/` | Prev / Diff / Current | yes | yes | yes |
 | Half | Files in any other subfolder (`plans/`, `rules/`, `self-review/`, …) | Current only (tabs hidden) | no | yes | yes |
 
 Half-treatment fits files that don't iterate the way the manuscript
@@ -385,7 +385,7 @@ alias redpen='bun ~/tools/llm-redpen/server.ts'
 ## Usage
 
 1. **Open a folder.** Click *Open paper folder…* and pick any
-   directory containing `.md` files. Nothing on disk is touched except
+   directory containing `.md` / `.tex` files. Nothing on disk is touched except
    `CLAUDE.md` (and only when you explicitly save the rules editor).
    `CLAUDE.md` doesn't have to exist up front — the editor will offer
    to create it.
@@ -470,8 +470,9 @@ Two prompts live in `docs/`:
 
 - [**`docs/agent-prompt.md`**](docs/agent-prompt.md) — paste this with
   each batch of exported comments. Explains the `§S ¶N` anchor scheme
-  so the agent can locate each comment in the source. **The anchors
-  are NOT in the source file** — they're a viewer-side display
+  for both Markdown and TeX files so the agent can locate each comment
+  in the source. **The anchors are NOT in the source file** — they're
+  a viewer-side display
   computed from structural position, so the agent needs the rule.
 - [**`docs/agent-workflow.md`**](docs/agent-workflow.md) — paste this
   *once* when bootstrapping the agent session. Sets the

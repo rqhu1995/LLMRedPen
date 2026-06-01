@@ -16,7 +16,7 @@
         <button id="open-folder">Open paper folder…</button>
         <div id="folder-name" class="folder-name"></div>
       </header>
-      <nav id="file-list" aria-label="Markdown files in folder"></nav>
+      <nav id="file-list" aria-label="Review files in folder"></nav>
       <section id="stranded-section" hidden aria-label="Annotations from missing files">
         <h3 class="stranded-title">Annotations from missing files</h3>
         <p class="stranded-help">Likely renamed. Reassign to the current file or delete.</p>
@@ -31,7 +31,7 @@
     <main id="content">
       <section id="welcome">
         <h2>Read &amp; annotate</h2>
-        <p>Open any folder of <code>.md</code> files. Root files appear under the <em>Manuscript</em> group; each immediate subfolder (e.g. <code>plans/</code>, <code>rules/</code>, <code>self-review/</code>) becomes its own labelled group in the sidebar.</p>
+        <p>Open any folder of <code>.md</code> / <code>.tex</code> files. Root files appear under the <em>Manuscript</em> group; each immediate subfolder (e.g. <code>plans/</code>, <code>rules/</code>, <code>self-review/</code>) becomes its own labelled group in the sidebar.</p>
         <p>Select any text in a rendered file to annotate it. Comments live in the right pane; they persist in your browser per-folder and survive page refresh.</p>
         <p>Root files (and anything under <code>manuscript/</code>) get the full round model (<em>Prev</em> / <em>Diff</em> / <em>Current</em> + <em>Proceed</em>); other subfolder files are annotatable + reloadable but stay out of the round loop.</p>
         <p>If the folder contains <code>CLAUDE.md</code>, the sidebar's <em>Edit CLAUDE.md rules</em> button opens a structured editor for it; otherwise it offers to create one.</p>

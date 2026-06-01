@@ -1,9 +1,9 @@
 /* md-annotator — main browser logic.
  *
  * Single-folder workflow:
- *   1. User picks a folder via showDirectoryPicker(). Any folder with .md files works.
- *   2. Sidebar lists all .md files in that folder.
- *   3. Clicking a file renders it (markdown-it + KaTeX) with §-section and ¶-paragraph markers.
+ *   1. User picks a folder via showDirectoryPicker(). Any folder with .md/.tex files works.
+ *   2. Sidebar lists all .md/.tex files in that folder.
+ *   3. Clicking a file renders it with §-section and ¶-paragraph markers.
  *   4. Selecting text opens a comment popup; comments persist in localStorage keyed by folder name.
  *   5. Export-comments modal offers clipboard copy or showSaveFilePicker (default startIn = paper folder).
  *   6. The CLAUDE.md rules editor parses CLAUDE.md into H2/H3 cards with edit / add / delete actions
@@ -20,7 +20,7 @@ let directoryHandle = null;   // FileSystemDirectoryHandle of the paper folder
 let currentFile = null;       // { name, handle, content }
 let annotations = {};         // { filename: [ { anchor, text, comment, ... } ] } — current round
 let baselines = {};           // { filename: { content, annotations, timestamp } } — last locked previous round
-let folderFileNames = [];     // sorted list of .md filenames currently in the folder
+let folderFileNames = [];     // sorted list of review filenames currently in the folder
 
 // Which tab the article pane is showing right now. Drives render paths and
 // gates write operations (only the 'current' tab accepts new annotations).
@@ -57,6 +57,7 @@ let rulesData = null;         // { handle, text, sections } while rules editor i
 // to LLMRedPen. Do not change without a migration step.
 const ANNOTATIONS_PREFIX = 'mda:';
 const CONTEXT_LEN = 32;  // chars of prefix/suffix stored on new annotations
+const REVIEW_EXTENSIONS = ['.md', '.tex'];
 
 // Platform detection for cross-platform hotkey labels. Source UI strings
 // use ⌘ (Mac convention); on Windows / Linux we substitute Ctrl at boot.
@@ -745,7 +746,7 @@ async function openFolder() {
 }
 
 async function applyFolder(handle) {
-  // Any folder with .md files is acceptable. The viewer used to require
+  // Any folder with .md/.tex files is acceptable. The viewer used to require
   // CLAUDE.md at the root (because the rules editor needed it as its
   // source of truth) but the editor now creates the file on demand if
   // it's missing, so the gate is gone.
@@ -787,7 +788,7 @@ async function applyFolder(handle) {
 // vs. half-treatment (annotatable + reloadable, but no rounds).
 //
 // Full:
-//   - Any .md at the folder root
+//   - Any .md/.tex at the folder root
 //   - Anything under a `manuscript/` subfolder — common layout where
 //     the user keeps the draft itself in its own subfolder for tidiness
 //
@@ -797,6 +798,16 @@ async function applyFolder(handle) {
 // If your project uses a different name for the manuscript subfolder,
 // add it to MANUSCRIPT_FOLDERS below.
 const MANUSCRIPT_FOLDERS = new Set(['manuscript']);  // case-insensitive
+
+function isReviewFileName(name) {
+  const lower = (name || '').toLowerCase();
+  return REVIEW_EXTENSIONS.some((ext) => lower.endsWith(ext));
+}
+
+function fileFormatForName(name) {
+  const lower = (name || '').toLowerCase();
+  return lower.endsWith('.tex') ? 'tex' : 'markdown';
+}
 
 function isSubfolderFile(name) {
   if (typeof name !== 'string' || !name.includes('/')) return false;
@@ -855,21 +866,40 @@ async function collectMdRecursively(dirHandle, prefix, depth) {
   return out;
 }
 
+async function collectReviewFilesRecursively(dirHandle, prefix, depth) {
+  const out = [];
+  if (depth > MAX_SUBFOLDER_DEPTH) return out;
+  try {
+    for await (const [name, entry] of dirHandle.entries()) {
+      if (entry.kind === 'file' && isReviewFileName(name)) {
+        out.push(prefix + '/' + name);
+      } else if (entry.kind === 'directory') {
+        if (shouldSkipFolder(name)) continue;
+        const nested = await collectReviewFilesRecursively(entry, prefix + '/' + name, depth + 1);
+        out.push(...nested);
+      }
+    }
+  } catch (e) {
+    console.warn('[redpen] subfolder enumeration failed at', prefix, e);
+  }
+  return out;
+}
+
 async function listFiles() {
-  // (1) Root .md files — the round-model manuscript.
+  // (1) Root .md/.tex files — the round-model manuscript.
   const rootFiles = [];
   // (2) Subfolders → { folderName: [pathPrefixedFileNames] }
-  //     Each value contains every .md found at any depth inside that
+  //     Each value contains every supported review file found at any depth inside that
   //     top-level subfolder (e.g. manuscript/plans/foo.md is bucketed
   //     under "manuscript", with its full relative path preserved).
   const subgroups = {};
 
   for await (const [name, entry] of directoryHandle.entries()) {
-    if (entry.kind === 'file' && name.endsWith('.md')) {
+    if (entry.kind === 'file' && isReviewFileName(name)) {
       rootFiles.push(name);
     } else if (entry.kind === 'directory') {
       if (shouldSkipFolder(name)) continue;
-      const subFiles = await collectMdRecursively(entry, name, 1);
+      const subFiles = await collectReviewFilesRecursively(entry, name, 1);
       if (subFiles.length) {
         subFiles.sort((a, b) => a.localeCompare(b));
         subgroups[name] = subFiles;
@@ -893,7 +923,7 @@ async function listFiles() {
   appendFileGroup(list, rootLabel, rootFiles);
 
   // Then each subfolder, alphabetically. Each gets the title-cased
-  // folder name as its group label; nested .md files show their path
+  // folder name as its group label; nested review files show their path
   // relative to the group prefix.
   for (const folder of Object.keys(subgroups).sort()) {
     appendFileGroup(list, prettyGroupName(folder), subgroups[folder], {
@@ -1184,9 +1214,11 @@ function renderActiveTab() {
   document.getElementById('comments-pane').classList.remove('diff-hidden');
 
   const rawContent = getDisplayContent();
-  const renderText = showMetadata ? rawContent : stripMetadata(rawContent);
-  rendered.innerHTML = renderMarkdownWithMath(renderText);
-  numberSectionsAndParagraphs(rendered);
+  const format = currentFile ? fileFormatForName(currentFile.name) : 'markdown';
+  const renderText = (format === 'markdown' && !showMetadata)
+    ? stripMetadata(rawContent)
+    : rawContent;
+  renderFileContent(rendered, renderText, format);
   // Wrap rule-ID references before highlights — the locator just reads
   // textContent, which is unchanged by the <a> wrapping.
   wrapRuleReferences(rendered);
@@ -1198,6 +1230,116 @@ function renderActiveTab() {
 
   // The 'add general note' button only makes sense on the editable tab.
   document.getElementById('add-general-note').disabled = !isInteractiveTab();
+}
+
+function renderFileContent(rendered, text, format) {
+  if (format === 'tex') {
+    renderTeXWithAnchors(rendered, text);
+    return;
+  }
+  rendered.innerHTML = renderMarkdownWithMath(text);
+  numberSectionsAndParagraphs(rendered);
+}
+
+function renderTeXWithAnchors(rendered, text) {
+  rendered.classList.remove('rendered--outline-h3');
+  rendered.innerHTML = '';
+  const blocks = parseTeXBlocks(text);
+  const frag = document.createDocumentFragment();
+  for (const block of blocks) {
+    let el = null;
+    if (block.type === 'heading') {
+      el = document.createElement(`h${Math.min(6, Math.max(2, block.level))}`);
+      el.textContent = block.text;
+    } else if (block.type === 'code') {
+      el = document.createElement('pre');
+      el.textContent = block.text;
+    } else {
+      el = document.createElement('p');
+      el.textContent = block.text;
+    }
+    frag.appendChild(el);
+  }
+  rendered.appendChild(frag);
+  numberSectionsAndParagraphs(rendered);
+}
+
+function parseTeXBlocks(text) {
+  const blocks = [];
+  const lines = (text || '').replace(/\r\n?/g, '\n').split('\n');
+  const headingRe = /^\\(section|subsection|subsubsection|paragraph|subparagraph)\*?\{(.+)\}\s*$/;
+  const envStartRe = /^\\begin\{([^}]+)\}\s*$/;
+  const envEndRe = /^\\end\{([^}]+)\}\s*$/;
+  const headingLevel = {
+    section: 2,
+    subsection: 3,
+    subsubsection: 4,
+    paragraph: 5,
+    subparagraph: 6,
+  };
+
+  let para = [];
+  let env = null;
+  let envLines = [];
+
+  const flushPara = () => {
+    if (!para.length) return;
+    const body = para.join(' ').trim();
+    if (body) blocks.push({ type: 'paragraph', text: body });
+    para = [];
+  };
+
+  const flushEnv = () => {
+    if (!env) return;
+    const body = envLines.join('\n').trim();
+    if (body) blocks.push({ type: 'code', text: body });
+    env = null;
+    envLines = [];
+  };
+
+  for (const rawLine of lines) {
+    const line = rawLine.replace(/\s+$/g, '');
+    const trimmed = line.trim();
+
+    if (env) {
+      envLines.push(line);
+      const end = trimmed.match(envEndRe);
+      if (end && end[1] === env) flushEnv();
+      continue;
+    }
+
+    if (!trimmed) {
+      flushPara();
+      continue;
+    }
+
+    if (trimmed.startsWith('%')) continue;
+
+    const headingMatch = trimmed.match(headingRe);
+    if (headingMatch) {
+      flushPara();
+      blocks.push({
+        type: 'heading',
+        level: headingLevel[headingMatch[1]] || 2,
+        text: headingMatch[2].trim(),
+      });
+      continue;
+    }
+
+    const envMatch = trimmed.match(envStartRe);
+    if (envMatch) {
+      flushPara();
+      env = envMatch[1];
+      envLines = [line];
+      continue;
+    }
+
+    para.push(trimmed);
+  }
+
+  flushPara();
+  flushEnv();
+  return blocks;
 }
 
 function numberSectionsAndParagraphs(rendered) {
@@ -2041,7 +2183,7 @@ async function saveAsFile() {
   }
   const text = buildExportText(scope);
   const base = (scope === 'current' && currentFile)
-    ? currentFile.name.replace(/\.md$/i, '').replace(/\//g, '-')
+    ? currentFile.name.replace(/\.(md|tex)$/i, '').replace(/\//g, '-')
     : directoryHandle.name;
   const suggested = `${base}-comments.txt`;
 
@@ -2051,7 +2193,7 @@ async function saveAsFile() {
       startIn: directoryHandle,
       types: [{
         description: 'Plain text',
-        accept: { 'text/plain': ['.txt', '.md'] },
+        accept: { 'text/plain': ['.txt', '.md', '.tex'] },
       }],
     });
     const writable = await handle.createWritable();
